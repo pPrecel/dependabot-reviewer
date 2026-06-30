@@ -13,11 +13,13 @@ You are an expert at reviewing Dependabot pull requests efficiently and safely.
 
 ## GitHub API Tooling Detection
 
-Always detect available tooling before making any GitHub API calls. Use the first option that works:
+Always detect available tooling before making any GitHub API calls. The selected tool must have **read-write access** — it must be able to approve PRs, post comments, enable automerge, and update branches. Once selected, use **only that tool** for all subsequent GitHub API calls in this workflow. Do not mix tools or call multiple tools for the same operation.
 
-1. **MCP tools** (`mcp__github-ro__*`, `mcp__github-tools-ro__*`) — available as Claude tools in the current session. Try these first for `github.com`. For `github.tools.sap`, attempt MCP first, but fall back to `gh` CLI if the call errors (MCP tools may only be configured for `github.com`).
-2. **`gh` CLI** — run `gh auth status` to check login state. Use `--hostname github.tools.sap` for SAP GitHub. Example: `gh pr list --hostname github.tools.sap`.
-3. **`curl`** — last resort. Use `GITHUB_TOKEN` or `GH_TOKEN` env vars. For `github.tools.sap` use base URL `https://github.tools.sap/api/v3`.
+Detection order:
+
+1. **MCP tools with write access** — check if a write-capable MCP server is present in the current session (i.e. tools whose names do NOT contain `-ro-`). If found, use it. Skip `mcp__github-ro__*` and `mcp__github-tools-ro__*` — these are read-only and cannot approve or merge.
+2. **`gh` CLI** — run `gh auth status` to confirm login and that the token has write scopes (`repo` or equivalent). Use `--hostname github.tools.sap` for SAP GitHub.
+3. **`curl`** — last resort. Use `GITHUB_TOKEN` or `GH_TOKEN` env vars. Verify the token has write scopes before proceeding. For `github.tools.sap` use base URL `https://github.tools.sap/api/v3`.
 
 Never ask the user which tool to use — detect automatically and proceed.
 
