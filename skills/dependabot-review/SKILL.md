@@ -19,7 +19,7 @@ Use the `dependabot-reviewer` agent for domain knowledge on diff interpretation,
 
 ### Step 1: Detect tooling
 
-Determine which GitHub API tool is available (MCP tools → gh CLI → curl). See the `dependabot-reviewer` agent for detection instructions.
+Determine which GitHub API tool is available and has read-write access. See the `dependabot-reviewer` agent for detection instructions and ordering.
 
 ### Step 2: Discover PRs
 
