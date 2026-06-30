@@ -13,8 +13,8 @@
         "name": "pPrecel"
       },
       "source": {
-        "source": "github",
-        "repo": "pPrecel/dependabot-reviewer"
+        "source": "url",
+        "url": "https://github.com/pPrecel/dependabot-reviewer.git"
       },
       "homepage": "https://github.com/pPrecel/dependabot-reviewer",
       "tags": ["dependabot", "pr-review", "automation", "github"]
