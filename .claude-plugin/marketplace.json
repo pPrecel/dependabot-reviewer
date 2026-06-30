@@ -12,7 +12,7 @@
       "author": {
         "name": "pPrecel"
       },
-      "source": ".",
+      "source": "./",
       "homepage": "https://github.com/pPrecel/dependabot-reviewer",
       "tags": ["dependabot", "pr-review", "automation", "github"]
     }
