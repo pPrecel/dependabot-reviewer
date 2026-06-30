@@ -10,8 +10,8 @@ A Claude Code plugin that reviews open Dependabot PRs where you are a requested 
 ## Installation
 
 ```
-/plugin marketplace add pPrecel/dependabot-reviewer
-/plugin install dependabot-reviewer@dependabot-reviewer
+claude plugin marketplace add pPrecel/dependabot-reviewer
+claude plugin install dependabot-reviewer@dependabot-reviewer
 ```
 
 ## Usage
