@@ -1,16 +1,23 @@
 {
-  "version": "1.0",
+  "name": "dependabot-reviewer",
+  "owner": {
+    "name": "pPrecel"
+  },
   "plugins": [
     {
-      "id": "dependabot-reviewer",
-      "name": "Dependabot Reviewer",
+      "name": "dependabot-reviewer",
+      "displayName": "Dependabot Reviewer",
       "description": "Review all open Dependabot PRs requiring your review on github.com and github.tools.sap. Approves safe updates, sets automerge, updates branches, and flags PRs that require manual action.",
-      "author": "pPrecel",
       "version": "1.0.0",
+      "author": {
+        "name": "pPrecel"
+      },
+      "source": {
+        "source": "github",
+        "repo": "pPrecel/dependabot-reviewer"
+      },
       "homepage": "https://github.com/pPrecel/dependabot-reviewer",
-      "repository": "https://github.com/pPrecel/dependabot-reviewer",
-      "tags": ["dependabot", "pr-review", "automation", "github"],
-      "downloadUrl": "https://github.com/pPrecel/dependabot-reviewer/archive/main.zip"
+      "tags": ["dependabot", "pr-review", "automation", "github"]
     }
   ]
 }
