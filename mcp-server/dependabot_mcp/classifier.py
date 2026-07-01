@@ -27,7 +27,7 @@ def _changed_files(diff: str) -> set[str]:
             # "diff --git a/path/to/file b/path/to/file"
             parts = line.split(" ")
             if len(parts) >= 4:
-                path = parts[3].lstrip("b/")
+                path = parts[3].removeprefix("b/")
                 files.add(path.split("/")[-1])  # basename
     return files
 

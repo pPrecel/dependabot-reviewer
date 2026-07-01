@@ -25,13 +25,15 @@ def render_template(
             "**Next steps**: Fix the failing tests or configuration before this PR can be merged."
         )
 
-    # breaking-changes
-    excerpt_block = f"> {changelog_excerpt}" if changelog_excerpt else "> (no excerpt available)"
-    return (
-        "Dependabot PR requires manual action ⚠️\n\n"
-        "**Reason**: Breaking changes detected in changelog\n\n"
-        f"**{library}**: v{old_version} → v{new_version} ({semver})\n\n"
-        "**Relevant changelog excerpt**:\n"
-        f"{excerpt_block}\n\n"
-        "**Next steps**: Review the breaking changes above and update the codebase accordingly."
-    )
+    if reason == "breaking-changes":
+        excerpt_block = f"> {changelog_excerpt}" if changelog_excerpt else "> (no excerpt available)"
+        return (
+            "Dependabot PR requires manual action ⚠️\n\n"
+            "**Reason**: Breaking changes detected in changelog\n\n"
+            f"**{library}**: v{old_version} → v{new_version} ({semver})\n\n"
+            "**Relevant changelog excerpt**:\n"
+            f"{excerpt_block}\n\n"
+            "**Next steps**: Review the breaking changes above and update the codebase accordingly."
+        )
+
+    raise ValueError(f"Unknown reason: {reason!r}")
