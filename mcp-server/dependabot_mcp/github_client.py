@@ -75,3 +75,9 @@ class GithubClient:
         r = await self._client.get(f"/repos/{repo}/actions/runs/{run_id}/pending_deployments")
         r.raise_for_status()
         return r.json()
+
+    async def __aenter__(self) -> "GithubClient":
+        return self
+
+    async def __aexit__(self, *args: object) -> None:
+        await self._client.aclose()

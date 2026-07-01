@@ -1,3 +1,5 @@
+import base64
+
 import pytest
 import respx
 import httpx
@@ -69,7 +71,6 @@ async def test_get_release(gh):
 
 @respx.mock
 async def test_get_file(gh):
-    import base64
     content = base64.b64encode(b"## v1.0.1\n- fix something").decode()
     respx.get("https://api.github.com/repos/owner/lib/contents/CHANGELOG.md").mock(
         return_value=httpx.Response(200, json={"content": content + "\n", "encoding": "base64"})
