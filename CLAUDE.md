@@ -45,6 +45,21 @@ skills/dependabot-verify/SKILL.md  ← verify (read-only) workflow
 .claude-plugin/plugin.json      ← plugin declaration
 ```
 
+### MCP server (`mcp-server/`)
+
+The plugin ships a Python MCP server that owns all GitHub I/O for the `dependabot-review` skill. It exposes 5 tools:
+
+- `list_dependabot_prs(host, token)` — discover PRs via `@me` search qualifiers
+- `get_pr_details(host, token, repo, pr_number)` — fetch reviews, CI, diff, comments in parallel
+- `get_changelog(host, token, library_repo, new_version)` — fetch release notes
+- `prepare_merge(host, token, repo, pr_number, comment)` — orchestrate rebase → env approvals → automerge → approve
+- `post_action_required_comment(host, token, repo, pr_number, reason, ...)` — post structured comment
+
+The server is declared in `.mcp.json`. Token acquisition (`gh auth token`) stays in the skill — the server is stateless and receives `host` and `token` on every call.
+
+Source: `mcp-server/dependabot_mcp/`
+Tests: `mcp-server/tests/`
+
 ## Key design decisions
 
 **Tooling detection order**: MCP tools → `gh` CLI → `curl`. The agent describes detection generically. Each skill specifies its own access requirements: `dependabot-review` requires read-write access; `dependabot-verify` prefers read-only MCP tools and does not require write access.
