@@ -30,11 +30,15 @@ Never ask the user which tool to use — detect automatically and proceed.
 
 GitHub removes a user from `reviewRequests` once they submit a review. To avoid missing PRs that were already reviewed but not yet merged, run **two queries** and deduplicate by PR number.
 
+> **Note on Dependabot author identity**: On `github.com`, Dependabot is a GitHub App — use `author:app/dependabot`. On `github.tools.sap` (GitHub Enterprise Server), Dependabot is a regular user — use `author:dependabot` (without `app/`).
+
 **Query 1** — pending review (not yet reviewed):
-`is:open is:pr author:app/dependabot review-requested:@me`
+- `github.com`: `is:open is:pr author:app/dependabot review-requested:@me`
+- `github.tools.sap`: `is:open is:pr author:dependabot review-requested:@me`
 
 **Query 2** — already reviewed (review submitted, PR still open):
-`is:open is:pr author:app/dependabot reviewed-by:@me`
+- `github.com`: `is:open is:pr author:app/dependabot reviewed-by:@me`
+- `github.tools.sap`: `is:open is:pr author:dependabot reviewed-by:@me`
 
 Merge both result sets, deduplicating by PR number. The combined list is the full set of PRs to process.
 
@@ -52,11 +56,11 @@ gh search prs --author app/dependabot --reviewed-by @me --state open \
   --json number,title,url,repository --limit 100
 
 # github.tools.sap — query 1
-GH_HOST=github.tools.sap gh search prs --review-requested @me --state open \
+GH_HOST=github.tools.sap gh search prs --author dependabot --review-requested @me --state open \
   --json number,title,url,repository --limit 100
 
 # github.tools.sap — query 2
-GH_HOST=github.tools.sap gh search prs --reviewed-by @me --state open \
+GH_HOST=github.tools.sap gh search prs --author dependabot --reviewed-by @me --state open \
   --json number,title,url,repository --limit 100
 ```
 
@@ -76,10 +80,10 @@ curl -s -H "Authorization: token $GH_TOKEN" \
 ```bash
 # query 1
 curl -s -H "Authorization: token $GH_TOKEN" \
-  "https://github.tools.sap/api/v3/search/issues?q=is:open+is:pr+author:app/dependabot+review-requested:@me&per_page=100"
+  "https://github.tools.sap/api/v3/search/issues?q=is:open+is:pr+author:dependabot+review-requested:@me&per_page=100"
 # query 2
 curl -s -H "Authorization: token $GH_TOKEN" \
-  "https://github.tools.sap/api/v3/search/issues?q=is:open+is:pr+author:app/dependabot+reviewed-by:@me&per_page=100"
+  "https://github.tools.sap/api/v3/search/issues?q=is:open+is:pr+author:dependabot+reviewed-by:@me&per_page=100"
 ```
 
 ---

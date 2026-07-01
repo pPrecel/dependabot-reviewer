@@ -23,7 +23,7 @@ Detect which GitHub API tool is available. Use the first option that works. No w
 
 1. **Read-only MCP tools** — prefer `mcp__github-ro__*` or `mcp__github-tools-ro__*` if present in the session. These are sufficient for all read operations in this workflow.
 2. **Read-write MCP tools** — use if read-only MCP tools are absent (they also support read operations).
-3. **`gh` CLI** — run `gh auth status` to confirm login. For `github.tools.sap` use `--hostname github.tools.sap`.
+3. **`gh` CLI** — run `gh auth status` to confirm login. For `github.tools.sap` use `GH_HOST=github.tools.sap gh auth status`.
 4. **`curl`** — last resort. Use `GITHUB_TOKEN` or `GH_TOKEN` env vars. For `github.tools.sap` use base URL `https://github.tools.sap/api/v3`.
 
 Use only one tool for all subsequent GitHub API calls in this workflow. Never mix tools.
