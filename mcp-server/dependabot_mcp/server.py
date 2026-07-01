@@ -267,6 +267,39 @@ async def prepare_merge(host: str, token: str, repo: str, pr_number: int, commen
     ).model_dump()
 
 
+@mcp.tool()
+async def post_action_required_comment(
+    host: str,
+    token: str,
+    repo: str,
+    pr_number: int,
+    reason: str,           # "failing-ci" | "breaking-changes"
+    library: str,
+    old_version: str,
+    new_version: str,
+    semver: str,
+    failing_checks: list[dict] | None = None,
+    changelog_excerpt: str | None = None,
+) -> dict:
+    """
+    Post a structured ACTION REQUIRED comment on a PR using a fixed template.
+    reason: "failing-ci" or "breaking-changes"
+    """
+    from .templates import render_template
+    body = render_template(
+        reason=reason,
+        failing_checks=failing_checks,
+        library=library,
+        old_version=old_version,
+        new_version=new_version,
+        semver=semver,
+        changelog_excerpt=changelog_excerpt,
+    )
+    client = GithubClient(host, token)
+    result = await client.post_comment(repo, pr_number, body)
+    return CommentResult(comment_url=result["html_url"]).model_dump()
+
+
 def _extract_changelog_section(content: str, version: str) -> str:
     """Extract the section for `version` from a CHANGELOG.md."""
     # Normalise: strip leading "v" for matching
