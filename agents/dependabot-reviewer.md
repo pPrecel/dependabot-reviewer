@@ -187,13 +187,27 @@ Extract only the section relevant to the version being updated to.
    gh pr merge <number> --repo <owner/repo> --auto --squash
    ```
    (Use `--squash` as default; if repo requires merge commits use `--merge`.)
-4. Check and update branch if needed:
+4. Approve any pending environment deployments:
+   ```bash
+   # Get the run ID of the WAITING check (e.g. select-environment)
+   gh pr view <number> --repo <owner/repo> --json statusCheckRollup
+   # For each run ID with status WAITING, check for pending deployments:
+   gh api /repos/<owner/repo>/actions/runs/<run_id>/pending_deployments
+   # If current_user_can_approve is true, approve each environment:
+   gh api --method POST \
+     -H "Accept: application/vnd.github+json" \
+     -H "X-GitHub-Api-Version: 2022-11-28" \
+     /repos/<owner/repo>/actions/runs/<run_id>/pending_deployments \
+     --input - <<< '{"environment_ids": [<env_id>], "state": "approved", "comment": "Approving environment for Dependabot PR"}'
+   ```
+   Skip this step if there are no WAITING checks.
+5. Check and update branch if needed:
    ```bash
    gh pr view <number> --repo <owner/repo> --json mergeStateStatus
    # if BEHIND:
    gh pr update-branch <number> --repo <owner/repo>
    ```
-5. Set status: `APPROVED` (or `UPDATED` if branch was updated)
+6. Set status: `APPROVED` (or `UPDATED` if branch was updated)
 
 ### ACTION REQUIRED action sequence
 
