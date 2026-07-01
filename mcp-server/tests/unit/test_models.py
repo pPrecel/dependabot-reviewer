@@ -1,6 +1,5 @@
-import pytest
 from dependabot_mcp.models import (
-    PRSummary, Review, CheckResult, DiffClassification,
+    PRSummary, Review, DiffClassification,
     PRDetails, Changelog, PrepareMergeResult, CommentResult,
 )
 
