@@ -170,6 +170,103 @@ async def get_changelog(host: str, token: str, library_repo: str, new_version: s
     return Changelog(found=False, excerpt="", source="not-found").model_dump()
 
 
+@mcp.tool()
+async def prepare_merge(host: str, token: str, repo: str, pr_number: int, comment: str) -> dict:
+    """
+    Orchestrate everything needed to bring a PR to a merged state.
+    Steps: rebase/update → env deployments → automerge → approve.
+    Returns status "done" or "needs_manual_rebase".
+    Idempotent: skips automerge and approve if already set.
+    """
+    client = GithubClient(host, token)
+    errors: list[str] = []
+    branch_updated = False
+    envs_approved = 0
+    automerge_set = False
+    approved = False
+
+    # ── Step 1: rebase / update ──────────────────────────────────────────
+    pr = await client.get_pr(repo, pr_number)
+    merge_state = pr.get("mergeable_state", "unknown")
+
+    if merge_state == "dirty":
+        return PrepareMergeResult(
+            status="needs_manual_rebase",
+            automerge_set=False,
+            approved=False,
+            envs_approved=0,
+            branch_updated=False,
+            message="PR has merge conflicts that require manual resolution before merging.",
+            errors=[],
+        ).model_dump()
+
+    if merge_state == "behind":
+        try:
+            await client.update_branch(repo, pr_number)
+            branch_updated = True
+        except Exception as e:
+            errors.append(f"update_branch failed: {e}")
+
+    # ── Step 2: env deployments ──────────────────────────────────────────
+    sha = pr["head"]["sha"]
+    checks_r = await client._client.get(
+        f"/repos/{repo}/commits/{sha}/check-runs",
+        params={"per_page": 100},
+    )
+    checks_r.raise_for_status()
+    checks = checks_r.json().get("check_runs", [])
+
+    waiting_run_ids = [
+        c["id"] for c in checks
+        if c.get("status") == "waiting" or c.get("conclusion") == "waiting"
+    ]
+    for run_id in waiting_run_ids:
+        try:
+            deployments = await client.get_pending_deployments(repo, run_id)
+            approvable = [d["id"] for d in deployments if d.get("current_user_can_approve")]
+            if approvable:
+                await client.approve_deployment(repo, run_id, approvable)
+                envs_approved += len(approvable)
+        except Exception as e:
+            errors.append(f"env approval for run {run_id} failed: {e}")
+
+    # ── Step 3: automerge ────────────────────────────────────────────────
+    if pr.get("auto_merge") is None:
+        try:
+            await client.enable_automerge(repo, pr_number)
+            automerge_set = True
+        except Exception as e:
+            errors.append(f"enable_automerge failed: {e}")
+    # else: already set — skip
+
+    # ── Step 4: approve ──────────────────────────────────────────────────
+    reviews = await client.get_pr_reviews(repo, pr_number)
+    # Determine current user login from token
+    me_r = await client._client.get("/user")
+    me_login = me_r.json().get("login", "") if me_r.status_code == 200 else ""
+
+    already_approved = any(
+        r.get("state") == "APPROVED" and r.get("user", {}).get("login") == me_login
+        for r in reviews
+    )
+    if not already_approved:
+        try:
+            await client.post_review(repo, pr_number, comment)
+            approved = True
+        except Exception as e:
+            errors.append(f"post_review failed: {e}")
+
+    return PrepareMergeResult(
+        status="done",
+        automerge_set=automerge_set,
+        approved=approved,
+        envs_approved=envs_approved,
+        branch_updated=branch_updated,
+        message="",
+        errors=errors,
+    ).model_dump()
+
+
 def _extract_changelog_section(content: str, version: str) -> str:
     """Extract the section for `version` from a CHANGELOG.md."""
     # Normalise: strip leading "v" for matching
