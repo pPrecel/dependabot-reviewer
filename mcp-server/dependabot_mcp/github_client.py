@@ -76,6 +76,74 @@ class GithubClient:
         r.raise_for_status()
         return r.json()
 
+    # ── Write ─────────────────────────────────────────────────────────────
+
+    async def post_review(self, repo: str, number: int, body: str) -> dict:
+        r = await self._client.post(
+            f"/repos/{repo}/pulls/{number}/reviews",
+            json={"body": body, "event": "APPROVE"},
+        )
+        r.raise_for_status()
+        return r.json()
+
+    async def post_comment(self, repo: str, number: int, body: str) -> dict:
+        r = await self._client.post(
+            f"/repos/{repo}/issues/{number}/comments",
+            json={"body": body},
+        )
+        r.raise_for_status()
+        return r.json()
+
+    async def enable_automerge(self, repo: str, number: int) -> dict:
+        # GitHub GraphQL: enablePullRequestAutoMerge
+        # First get the PR node_id
+        pr = await self.get_pr(repo, number)
+        node_id = pr["node_id"]
+        query = """
+        mutation($pullRequestId: ID!, $mergeMethod: PullRequestMergeMethod!) {
+          enablePullRequestAutoMerge(input: {
+            pullRequestId: $pullRequestId,
+            mergeMethod: $mergeMethod
+          }) {
+            pullRequest { autoMergeRequest { mergeMethod } }
+          }
+        }
+        """
+        # Derive GraphQL endpoint from REST base_url
+        base = str(self._client.base_url)
+        if "api.github.com" in base:
+            graphql_url = "https://api.github.com/graphql"
+        else:
+            host = base.split("/")[2]
+            graphql_url = f"https://{host}/api/graphql"
+
+        r = await self._client.post(
+            graphql_url,
+            json={"query": query, "variables": {"pullRequestId": node_id, "mergeMethod": "SQUASH"}},
+        )
+        r.raise_for_status()
+        return r.json()
+
+    async def update_branch(self, repo: str, number: int) -> dict:
+        r = await self._client.put(
+            f"/repos/{repo}/pulls/{number}/update-branch",
+            json={},
+        )
+        r.raise_for_status()
+        return r.json()
+
+    async def approve_deployment(self, repo: str, run_id: int, env_ids: list[int]) -> dict:
+        r = await self._client.post(
+            f"/repos/{repo}/actions/runs/{run_id}/pending_deployments",
+            json={
+                "environment_ids": env_ids,
+                "state": "approved",
+                "comment": "Approving environment for Dependabot PR",
+            },
+        )
+        r.raise_for_status()
+        return r.json()
+
     async def __aenter__(self) -> "GithubClient":
         return self
 

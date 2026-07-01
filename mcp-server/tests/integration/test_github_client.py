@@ -77,3 +77,41 @@ async def test_get_file(gh):
     )
     result = await gh.get_file("owner/lib", "CHANGELOG.md")
     assert "fix something" in result
+
+
+@respx.mock
+async def test_post_review(gh):
+    respx.post("https://api.github.com/repos/owner/repo/pulls/42/reviews").mock(
+        return_value=httpx.Response(200, json={"id": 99, "state": "APPROVED"})
+    )
+    result = await gh.post_review("owner/repo", 42, "LGTM")
+    assert result["state"] == "APPROVED"
+
+
+@respx.mock
+async def test_post_comment(gh):
+    respx.post("https://api.github.com/repos/owner/repo/issues/42/comments").mock(
+        return_value=httpx.Response(201, json={
+            "html_url": "https://github.com/owner/repo/issues/42#issuecomment-1"
+        })
+    )
+    result = await gh.post_comment("owner/repo", 42, "needs action")
+    assert "issuecomment" in result["html_url"]
+
+
+@respx.mock
+async def test_update_branch(gh):
+    respx.put("https://api.github.com/repos/owner/repo/pulls/42/update-branch").mock(
+        return_value=httpx.Response(202, json={"message": "Updating pull request branch."})
+    )
+    result = await gh.update_branch("owner/repo", 42)
+    assert result["message"] == "Updating pull request branch."
+
+
+@respx.mock
+async def test_approve_deployment(gh):
+    respx.post(
+        "https://api.github.com/repos/owner/repo/actions/runs/123/pending_deployments"
+    ).mock(return_value=httpx.Response(200, json=[{"id": 456, "state": "approved"}]))
+    result = await gh.approve_deployment("owner/repo", 123, [456])
+    assert result[0]["state"] == "approved"
