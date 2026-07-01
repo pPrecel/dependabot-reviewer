@@ -6,7 +6,7 @@
       "args": [
         "run",
         "--project",
-        "${configDir}/mcp-server",
+        "${CLAUDE_PLUGIN_ROOT}/mcp-server",
         "dependabot-mcp"
       ]
     }
