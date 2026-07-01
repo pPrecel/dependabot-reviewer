@@ -30,17 +30,9 @@ Use only one tool for all subsequent GitHub API calls in this workflow. Never mi
 
 ### Step 2: Discover PRs
 
-Fetch all open Dependabot PRs where the current user is a requested reviewer, from both:
-- `github.com`
-- `github.tools.sap`
+Fetch all open Dependabot PRs using the queries described in the `dependabot-reviewer` agent's "Finding Dependabot PRs" section. For `github.com` this includes all PRs in the `kyma-project` org plus PRs where you are a requested reviewer or have already reviewed. For `github.tools.sap` this includes PRs where you are a requested reviewer or have already reviewed.
 
-Use the same queries as described in the `dependabot-reviewer` agent's "Finding Dependabot PRs" section:
-
-```
-is:open is:pr author:app/dependabot review-requested:@me
-```
-
-Collect results into two lists (one per host). If a host returns an error or no results, note it and continue.
+Collect results into two lists (one per host), deduplicated by PR number. If a host returns an error or no results, note it and continue.
 
 ### Step 3: Classify each PR
 

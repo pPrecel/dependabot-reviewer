@@ -1,5 +1,5 @@
 {
   "name": "dependabot-reviewer",
   "description": "Review all open Dependabot PRs requiring your review on github.com and github.tools.sap. Approves safe updates, sets automerge, updates branches, and flags PRs that require manual action.",
-  "version": "1.1.0"
+  "version": "1.1.1"
 }

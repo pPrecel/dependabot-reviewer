@@ -28,38 +28,45 @@ Never ask the user which tool to use — detect automatically and proceed.
 
 ## Finding Dependabot PRs
 
-GitHub removes a user from `reviewRequests` once they submit a review. To avoid missing PRs that were already reviewed but not yet merged, run **two queries** and deduplicate by PR number.
+Run **three queries** and deduplicate by PR number. The combined list is the full set of PRs to process.
 
 > **Note on Dependabot author identity**: On `github.com`, Dependabot is a GitHub App — use `author:app/dependabot`. On `github.tools.sap` (GitHub Enterprise Server), Dependabot is a regular user — use `author:dependabot` (without `app/`).
 
-**Query 1** — pending review (not yet reviewed):
+**Query 1** — all Dependabot PRs in kyma-project org (github.com only):
+- `github.com`: `is:open is:pr author:app/dependabot org:kyma-project`
+
+**Query 2** — pending review assigned to current user (not yet reviewed):
 - `github.com`: `is:open is:pr author:app/dependabot review-requested:@me`
 - `github.tools.sap`: `is:open is:pr author:dependabot review-requested:@me`
 
-**Query 2** — already reviewed (review submitted, PR still open):
+**Query 3** — already reviewed (review submitted, PR still open):
 - `github.com`: `is:open is:pr author:app/dependabot reviewed-by:@me`
 - `github.tools.sap`: `is:open is:pr author:dependabot reviewed-by:@me`
 
-Merge both result sets, deduplicating by PR number. The combined list is the full set of PRs to process.
+Merge all result sets, deduplicating by PR number. The combined list is the full set of PRs to process.
 
 **Via MCP tools (github.com):**
-Run both queries using `mcp__github-ro__search_pull_requests` or `mcp__github-tools-ro__search_pull_requests`, then merge results.
+Run all three queries using `mcp__github-ro__search_pull_requests` or `mcp__github-tools-ro__search_pull_requests`, then merge results.
 
 **Via `gh` CLI:**
 ```bash
-# github.com — query 1
+# github.com — query 1: all kyma-project Dependabot PRs
+gh search prs --author app/dependabot --owner kyma-project --state open \
+  --json number,title,url,repository --limit 100
+
+# github.com — query 2: review requested
 gh search prs --author app/dependabot --review-requested @me --state open \
   --json number,title,url,repository --limit 100
 
-# github.com — query 2
+# github.com — query 3: already reviewed
 gh search prs --author app/dependabot --reviewed-by @me --state open \
   --json number,title,url,repository --limit 100
 
-# github.tools.sap — query 1
+# github.tools.sap — query 1: review requested
 GH_HOST=github.tools.sap gh search prs --author dependabot --review-requested @me --state open \
   --json number,title,url,repository --limit 100
 
-# github.tools.sap — query 2
+# github.tools.sap — query 2: already reviewed
 GH_HOST=github.tools.sap gh search prs --author dependabot --reviewed-by @me --state open \
   --json number,title,url,repository --limit 100
 ```
@@ -68,20 +75,23 @@ Combine and deduplicate by PR number before processing.
 
 **Via `curl` (github.com):**
 ```bash
-# query 1
+# query 1: all kyma-project Dependabot PRs
+curl -s -H "Authorization: token $GH_TOKEN" \
+  "https://api.github.com/search/issues?q=is:open+is:pr+author:app/dependabot+org:kyma-project&per_page=100"
+# query 2: review requested
 curl -s -H "Authorization: token $GH_TOKEN" \
   "https://api.github.com/search/issues?q=is:open+is:pr+author:app/dependabot+review-requested:@me&per_page=100"
-# query 2
+# query 3: already reviewed
 curl -s -H "Authorization: token $GH_TOKEN" \
   "https://api.github.com/search/issues?q=is:open+is:pr+author:app/dependabot+reviewed-by:@me&per_page=100"
 ```
 
 **Via `curl` (github.tools.sap):**
 ```bash
-# query 1
+# query 1: review requested
 curl -s -H "Authorization: token $GH_TOKEN" \
   "https://github.tools.sap/api/v3/search/issues?q=is:open+is:pr+author:dependabot+review-requested:@me&per_page=100"
-# query 2
+# query 2: already reviewed
 curl -s -H "Authorization: token $GH_TOKEN" \
   "https://github.tools.sap/api/v3/search/issues?q=is:open+is:pr+author:dependabot+reviewed-by:@me&per_page=100"
 ```

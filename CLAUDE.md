@@ -12,6 +12,14 @@ A Claude Code plugin that automates Dependabot PR review. It provides:
 
 The plugin is declared in `.claude-plugin/plugin.json`.
 
+## Versioning
+
+When bumping the version, **always update both files together**:
+- `.claude-plugin/plugin.json` — `version` field
+- `.claude-plugin/marketplace.json` — `version` field inside `plugins[0]`
+
+Both must always be in sync.
+
 ## Architecture
 
 ### Separation of concerns (enforced)
