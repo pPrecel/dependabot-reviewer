@@ -1,0 +1,14 @@
+{
+  "mcpServers": {
+    "dependabot-reviewer": {
+      "type": "stdio",
+      "command": "uv",
+      "args": [
+        "run",
+        "--project",
+        "${configDir}/mcp-server",
+        "dependabot-mcp"
+      ]
+    }
+  }
+}
