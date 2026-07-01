@@ -27,57 +27,108 @@ Never ask the user which tool to use — detect automatically and proceed.
 
 ## Finding Dependabot PRs
 
-Fetch all open PRs authored by `dependabot[bot]` where the current user is a requested reviewer.
+GitHub removes a user from `reviewRequests` once they submit a review. To avoid missing PRs that were already reviewed but not yet merged, run **two queries** and deduplicate by PR number.
+
+**Query 1** — pending review (not yet reviewed):
+`is:open is:pr author:app/dependabot review-requested:@me`
+
+**Query 2** — already reviewed (review submitted, PR still open):
+`is:open is:pr author:app/dependabot reviewed-by:@me`
+
+Merge both result sets, deduplicating by PR number. The combined list is the full set of PRs to process.
 
 **Via MCP tools (github.com):**
-Use `mcp__github-ro__search_pull_requests` or `mcp__github-tools-ro__search_pull_requests` with query:
-`is:open is:pr author:app/dependabot review-requested:@me`
+Run both queries using `mcp__github-ro__search_pull_requests` or `mcp__github-tools-ro__search_pull_requests`, then merge results.
 
 **Via `gh` CLI:**
 ```bash
-# github.com
-gh pr list --search "is:open is:pr author:app/dependabot review-requested:@me" --json number,title,url,repository,headRefName,baseRefName --limit 100
+# github.com — query 1
+gh search prs --author app/dependabot --review-requested @me --state open \
+  --json number,title,url,repository --limit 100
 
-# github.tools.sap
-gh pr list --hostname github.tools.sap --search "is:open is:pr author:app/dependabot review-requested:@me" --json number,title,url,repository,headRefName,baseRefName --limit 100
+# github.com — query 2
+gh search prs --author app/dependabot --reviewed-by @me --state open \
+  --json number,title,url,repository --limit 100
+
+# github.tools.sap — query 1
+GH_HOST=github.tools.sap gh search prs --review-requested @me --state open \
+  --json number,title,url,repository --limit 100
+
+# github.tools.sap — query 2
+GH_HOST=github.tools.sap gh search prs --reviewed-by @me --state open \
+  --json number,title,url,repository --limit 100
 ```
+
+Combine and deduplicate by PR number before processing.
 
 **Via `curl` (github.com):**
 ```bash
+# query 1
 curl -s -H "Authorization: token $GH_TOKEN" \
   "https://api.github.com/search/issues?q=is:open+is:pr+author:app/dependabot+review-requested:@me&per_page=100"
+# query 2
+curl -s -H "Authorization: token $GH_TOKEN" \
+  "https://api.github.com/search/issues?q=is:open+is:pr+author:app/dependabot+reviewed-by:@me&per_page=100"
 ```
 
 **Via `curl` (github.tools.sap):**
 ```bash
+# query 1
 curl -s -H "Authorization: token $GH_TOKEN" \
   "https://github.tools.sap/api/v3/search/issues?q=is:open+is:pr+author:app/dependabot+review-requested:@me&per_page=100"
+# query 2
+curl -s -H "Authorization: token $GH_TOKEN" \
+  "https://github.tools.sap/api/v3/search/issues?q=is:open+is:pr+author:app/dependabot+reviewed-by:@me&per_page=100"
 ```
 
 ---
 
-## Determining PR State (Path A vs Path B)
+## Determining PR State (Path A, Path A', or Path B)
 
-For each PR, check:
+For each PR, fetch both fields at once:
 
-**Has existing approve from the current user?**
-
-Via `gh`:
 ```bash
-gh pr view <number> --repo <owner/repo> --json reviews
-# Check reviews[].state == "APPROVED" and reviews[].author.login == current user
+gh pr view <number> --repo <owner/repo> --json reviews,autoMergeRequest
 ```
 
-**Has automerge enabled?**
+Check:
+- **has_approve**: `reviews[].state == "APPROVED"` and `reviews[].author.login == current user`
+- **has_automerge**: `autoMergeRequest != null`
 
-Via `gh`:
-```bash
-gh pr view <number> --repo <owner/repo> --json autoMergeRequest
-# autoMergeRequest != null means automerge is set
-```
+Then classify:
 
-**Path A** (has approve AND automerge set): skip full analysis, go to CI + branch update check.
-**Path B** (missing approve or automerge): run full analysis.
+| has_approve | has_automerge | Path |
+|-------------|---------------|------|
+| ✅ yes | ✅ yes | **Path A** — skip full analysis, only CI + branch check |
+| ✅ yes | ❌ no | **Path A'** — already reviewed, just ensure automerge is set and branch is up to date |
+| ❌ no | any | **Path B** — run full analysis from scratch |
+
+---
+
+## Path A': Already Approved, Missing Automerge
+
+This happens when approve was submitted but automerge was never enabled (e.g. a previous session approved without enabling it).
+
+1. Enable automerge:
+   ```bash
+   gh pr merge <number> --repo <owner/repo> --auto --squash
+   ```
+2. Check CI status:
+   ```bash
+   gh pr view <number> --repo <owner/repo> --json statusCheckRollup
+   ```
+   - Any `FAILURE` or `ERROR` → **ACTION REQUIRED**: post failing CI comment, do NOT set status APPROVED.
+   - All `SUCCESS` or `PENDING` → proceed.
+3. Check branch staleness:
+   ```bash
+   gh pr view <number> --repo <owner/repo> --json mergeStateStatus
+   ```
+   - `BEHIND` → update branch:
+     ```bash
+     gh pr update-branch <number> --repo <owner/repo>
+     ```
+     Set status: `UPDATED`.
+   - Otherwise → set status: `APPROVED`.
 
 ---
 

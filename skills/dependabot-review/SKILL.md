@@ -23,17 +23,19 @@ Determine which GitHub API tool is available and has read-write access. See the 
 
 ### Step 2: Discover PRs
 
-Fetch all open Dependabot PRs where the current user is a requested reviewer, from both:
-- `github.com`
-- `github.tools.sap`
+For each host (`github.com` and `github.tools.sap`), run **two queries** and deduplicate by PR number:
+1. `review-requested:@me` — PRs not yet reviewed (user still in reviewers list)
+2. `reviewed-by:@me` — PRs already reviewed (GitHub removes user from reviewers list after review is submitted)
 
-Collect results into two lists (one per host). If a host returns an error or no results, note it and continue.
+See the `dependabot-reviewer` agent for exact query syntax per tooling type.
+
+Collect the deduplicated results into two lists (one per host). If a host returns an error or no results, note it and continue.
 
 ### Step 3: Process each PR
 
 Process PRs sequentially. For each PR:
 
-1. Determine if it is **Path A** (already has approve + automerge) or **Path B** (needs full analysis). See `dependabot-reviewer` agent for how to check.
+1. Determine if it is **Path A** (approve + automerge already set), **Path A'** (approve exists but automerge missing), or **Path B** (no approve yet). See `dependabot-reviewer` agent for how to check.
 2. Execute the appropriate path as described in the `dependabot-reviewer` agent.
 3. Record the outcome: `APPROVED`, `UPDATED`, or `ACTION REQUIRED`.
 
