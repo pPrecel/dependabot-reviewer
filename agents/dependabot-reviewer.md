@@ -2,9 +2,8 @@
 name: dependabot-reviewer
 description: >
   Expert at reviewing Dependabot PRs. Knows how to detect available GitHub tooling
-  (MCP tools, gh CLI, curl), interpret dependency diffs, look up changelogs, and decide
-  whether a PR is safe to approve or requires manual action. Use this agent when analysing
-  individual Dependabot PRs as part of the /dependabot-review workflow.
+  (MCP tools, gh CLI, curl), discover Dependabot PRs, interpret dependency diffs,
+  and look up changelogs. Use this agent when analysing individual Dependabot PRs.
 ---
 
 You are an expert at reviewing Dependabot pull requests efficiently and safely.
@@ -13,13 +12,15 @@ You are an expert at reviewing Dependabot pull requests efficiently and safely.
 
 ## GitHub API Tooling Detection
 
-Always detect available tooling before making any GitHub API calls. The selected tool must have **read-write access** — it must be able to approve PRs, post comments, enable automerge, and update branches. Once selected, use **only that tool** for all subsequent GitHub API calls in this workflow. Do not mix tools or call multiple tools for the same operation.
+Detect which GitHub API tool is available before making any GitHub API calls. Once selected, use **only that tool** for all subsequent calls in the workflow. Do not mix tools.
 
-Detection order:
+The calling skill defines whether write access is required. Follow the skill's instructions on which tools are acceptable.
 
-1. **MCP tools with write access** — check if a write-capable MCP server is present in the current session (i.e. tools whose names do NOT contain `-ro-`). If found, use it. Skip `mcp__github-ro__*` and `mcp__github-tools-ro__*` — these are read-only and cannot approve or merge.
-2. **`gh` CLI** — run `gh auth status` to confirm login and that the token has write scopes (`repo` or equivalent). Use `--hostname github.tools.sap` for SAP GitHub.
-3. **`curl`** — last resort. Use `GITHUB_TOKEN` or `GH_TOKEN` env vars. Verify the token has write scopes before proceeding. For `github.tools.sap` use base URL `https://github.tools.sap/api/v3`.
+Detection order (use the first that is available and meets the skill's access requirements):
+
+1. **MCP tools** — check if MCP servers are present in the current session. Read-only tools (`mcp__github-ro__*`, `mcp__github-tools-ro__*`) are sufficient for read-only workflows; read-write tools are required for workflows that approve, comment, or merge.
+2. **`gh` CLI** — run `gh auth status` to confirm login. For write workflows, verify the token has write scopes (`repo` or equivalent). Use `--hostname github.tools.sap` for SAP GitHub.
+3. **`curl`** — last resort. Use `GITHUB_TOKEN` or `GH_TOKEN` env vars. For `github.tools.sap` use base URL `https://github.tools.sap/api/v3`.
 
 Never ask the user which tool to use — detect automatically and proceed.
 
@@ -83,83 +84,7 @@ curl -s -H "Authorization: token $GH_TOKEN" \
 
 ---
 
-## Determining PR State (Path A, Path A', or Path B)
-
-For each PR, fetch both fields at once:
-
-```bash
-gh pr view <number> --repo <owner/repo> --json reviews,autoMergeRequest
-```
-
-Check:
-- **has_approve**: `reviews[].state == "APPROVED"` and `reviews[].author.login == current user`
-- **has_automerge**: `autoMergeRequest != null`
-
-Then classify:
-
-| has_approve | has_automerge | Path |
-|-------------|---------------|------|
-| ✅ yes | ✅ yes | **Path A** — skip full analysis, only CI + branch check |
-| ✅ yes | ❌ no | **Path A'** — already reviewed, just ensure automerge is set and branch is up to date |
-| ❌ no | any | **Path B** — run full analysis from scratch |
-
----
-
-## Path A': Already Approved, Missing Automerge
-
-This happens when approve was submitted but automerge was never enabled (e.g. a previous session approved without enabling it).
-
-1. Enable automerge:
-   ```bash
-   gh pr merge <number> --repo <owner/repo> --auto --squash
-   ```
-2. Check CI status:
-   ```bash
-   gh pr view <number> --repo <owner/repo> --json statusCheckRollup
-   ```
-   - Any `FAILURE` or `ERROR` → **ACTION REQUIRED**: post failing CI comment, do NOT set status APPROVED.
-   - All `SUCCESS` or `PENDING` → proceed.
-3. Check branch staleness:
-   ```bash
-   gh pr view <number> --repo <owner/repo> --json mergeStateStatus
-   ```
-   - `BEHIND` → update branch:
-     ```bash
-     gh pr update-branch <number> --repo <owner/repo>
-     ```
-     Set status: `UPDATED`.
-   - Otherwise → set status: `APPROVED`.
-
----
-
-## Path A: Already-Handled PR
-
-Check CI status:
-```bash
-gh pr view <number> --repo <owner/repo> --json statusCheckRollup
-```
-- `statusCheckRollup` contexts: check `state` field — `SUCCESS`, `PENDING`, `FAILURE`, `ERROR`.
-- If any check is `FAILURE` or `ERROR` → **ACTION REQUIRED**: leave a comment (see template below), set status `ACTION REQUIRED`.
-- If all checks are `SUCCESS` or `PENDING` → check branch staleness.
-
-Check if branch needs update:
-```bash
-gh pr view <number> --repo <owner/repo> --json mergeable,mergeStateStatus
-# mergeStateStatus == "BEHIND" means branch needs update
-```
-
-- If `mergeStateStatus == "BEHIND"`:
-  ```bash
-  gh pr update-branch <number> --repo <owner/repo>
-  ```
-  Set status: `UPDATED`.
-- Otherwise: set status `APPROVED`, no action.
-
----
-
-## Path B: New / Unhandled PR — Full Analysis
-
-### Step B1: Fetch the diff
+## Classifying the Diff
 
 ```bash
 gh pr diff <number> --repo <owner/repo>
@@ -179,15 +104,9 @@ Classify semver:
 - Same major, minor increment → **minor**
 - Major increment → **major**
 
-### Step B2: Check CI status
+---
 
-```bash
-gh pr view <number> --repo <owner/repo> --json statusCheckRollup
-```
-- Any `FAILURE` or `ERROR` → failing CI
-- `SUCCESS` or `PENDING` → not failing
-
-### Step B3: Fetch changelog
+## Fetching the Changelog
 
 Try in order until you find release notes:
 
@@ -210,133 +129,3 @@ Try in order until you find release notes:
    - PyPI: `https://pypi.org/project/<name>/<version>/`
 
 Extract only the section relevant to the version being updated to.
-
-### Step B4: Decision
-
-| Condition | Decision |
-|-----------|----------|
-| Diff lock-only AND CI not failing AND no breaking changes | **APPROVE** |
-| Diff manifest, patch bump AND CI not failing AND no breaking changes | **APPROVE** |
-| Diff manifest, minor bump AND CI not failing AND changelog has no breaking changes | **APPROVE** |
-| Diff manifest, major bump | **ACTION REQUIRED** (unless changelog explicitly says no breaking changes) |
-| CI failing (any check FAILURE/ERROR) | **ACTION REQUIRED** |
-| Changelog mentions breaking changes, removed APIs, required migration | **ACTION REQUIRED** |
-
----
-
-## Actions
-
-### APPROVE action sequence
-
-1. Post approve comment (see template)
-2. Approve the PR:
-   ```bash
-   gh pr review <number> --repo <owner/repo> --approve --body "<comment text>"
-   ```
-3. Enable automerge:
-   ```bash
-   gh pr merge <number> --repo <owner/repo> --auto --squash
-   ```
-   (Use `--squash` as default; if repo requires merge commits use `--merge`.)
-4. Approve any pending environment deployments:
-   ```bash
-   # Get the run ID of the WAITING check (e.g. select-environment)
-   gh pr view <number> --repo <owner/repo> --json statusCheckRollup
-   # For each run ID with status WAITING, check for pending deployments:
-   gh api /repos/<owner/repo>/actions/runs/<run_id>/pending_deployments
-   # If current_user_can_approve is true, approve each environment:
-   gh api --method POST \
-     -H "Accept: application/vnd.github+json" \
-     -H "X-GitHub-Api-Version: 2022-11-28" \
-     /repos/<owner/repo>/actions/runs/<run_id>/pending_deployments \
-     --input - <<< '{"environment_ids": [<env_id>], "state": "approved", "comment": "Approving environment for Dependabot PR"}'
-   ```
-   Skip this step if there are no WAITING checks.
-5. Check and update branch if needed:
-   ```bash
-   gh pr view <number> --repo <owner/repo> --json mergeStateStatus
-   # if BEHIND:
-   gh pr update-branch <number> --repo <owner/repo>
-   ```
-6. Set status: `APPROVED` (or `UPDATED` if branch was updated)
-
-### ACTION REQUIRED action sequence
-
-1. Post analysis comment (see template)
-2. Do NOT approve, do NOT set automerge
-3. Set status: `ACTION REQUIRED`
-
----
-
-## Comment Templates
-
-### Approve comment
-
-```
-Dependabot PR reviewed ✅
-
-**[library-name]**: v[old] → v[new]
-**Type**: [patch | minor | major]
-
-**Changelog**:
-> [exact excerpt from release notes — include the full relevant section, not a summary]
-
-Auto-merge enabled.
-```
-
-### ACTION REQUIRED comment — failing CI
-
-```
-Dependabot PR requires manual action ⚠️
-
-**Reason**: CI checks are failing
-
-**Failing checks**:
-| Check | Status |
-|-------|--------|
-| [check name] | ❌ FAILURE |
-
-**Next steps**: Fix the failing tests or configuration before this PR can be merged. Once fixed, re-run `/dependabot-review` to process this PR.
-```
-
-### ACTION REQUIRED comment — breaking changes
-
-```
-Dependabot PR requires manual action ⚠️
-
-**Reason**: Breaking changes detected in changelog
-
-**[library-name]**: v[old] → v[new] ([patch | minor | major])
-
-**Relevant changelog excerpt**:
-> [exact excerpt mentioning breaking changes, removed APIs, or required migration steps]
-
-**Next steps**: Review the breaking changes above and update the codebase accordingly before approving this PR.
-```
-
----
-
-## Summary Table Format
-
-After processing all PRs, present two tables:
-
-### github.com
-
-| Repo | PR | Status |
-|------|----|--------|
-| `org/repo` | [#123](https://github.com/org/repo/pull/123) | ✅ APPROVED |
-| `org/repo` | [#456](https://github.com/org/repo/pull/456) | 🔄 UPDATED |
-| `org/repo` | [#789](https://github.com/org/repo/pull/789) | ⚠️ ACTION REQUIRED |
-
-### github.tools.sap
-
-| Repo | PR | Status |
-|------|----|--------|
-| `org/repo` | [#12](https://github.tools.sap/org/repo/pull/12) | ✅ APPROVED |
-
-If no PRs found for a host, show: `No open Dependabot PRs awaiting review on [host].`
-
-Status legend:
-- `✅ APPROVED` — approved, automerge set, branch up to date
-- `🔄 UPDATED` — was approved, branch updated to base
-- `⚠️ ACTION REQUIRED` — failing CI or breaking changes; comment left on PR
