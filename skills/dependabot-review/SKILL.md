@@ -2,7 +2,7 @@
 name: dependabot-review
 description: >
   Review all open Dependabot PRs across Otters team repositories.
-  Automatically approves safe updates, sets automerge, updates stale branches,
+  Automatically approves safe updates, sets automerge, updates branches,
   and leaves analysis comments on PRs that need manual action.
   Invoke with: /dependabot-review
 ---
@@ -11,230 +11,163 @@ description: >
 
 You are executing the Dependabot PR review workflow. Work autonomously — do not ask the user for input. Process all PRs and present results at the end.
 
-Use the `dependabot-reviewer` agent for: tooling detection, PR discovery, diff classification, and changelog lookup.
+All GitHub I/O is performed through the `dependabot-reviewer` MCP server tools. Do not call `gh` CLI for any GitHub operations — only for token acquisition.
 
 ---
 
-## Workflow
+## Step 1: Acquire tokens
 
-### Step 1: Detect tooling
+```bash
+TOKEN_GH=$(gh auth token)
+TOKEN_SAP=$(GH_HOST=github.tools.sap gh auth token 2>/dev/null || echo "")
+```
 
-Determine which GitHub API tool is available and has **read-write access** — it must be able to approve PRs, post comments, enable automerge, and update branches. See the `dependabot-reviewer` agent for detection instructions.
+If `TOKEN_SAP` is empty, skip `github.tools.sap` processing and note it in the summary.
 
-Skip `mcp__github-ro__*` and `mcp__github-tools-ro__*` — these are read-only and cannot approve or merge.
+---
 
-### Step 2: Discover PRs
+## Step 2: Discover PRs
 
-For each host (`github.com` and `github.tools.sap`), run **two queries** and deduplicate by PR number:
-1. `review-requested:@me` — PRs not yet reviewed (user still in reviewers list)
-2. `reviewed-by:@me` — PRs already reviewed (GitHub removes user from reviewers list after review is submitted)
+For each host that has a token, call:
 
-See the `dependabot-reviewer` agent's "Finding Dependabot PRs" section for exact queries and commands.
+```
+list_dependabot_prs(host="github.com", token=TOKEN_GH)
+list_dependabot_prs(host="github.tools.sap", token=TOKEN_SAP)   # if token available
+```
 
-Collect results into two lists (one per host). If a host returns an error or no results, note it and continue.
+Collect results into two lists. Each item: `{number, repo, title, url}`.
 
-### Step 3: Process each PR
+---
 
-Process PRs sequentially. For each PR:
+## Step 3: Process each PR
 
-1. Determine if it is **Path A** or **Path B** (see below).
-2. Execute the appropriate path.
-3. Record the outcome: `APPROVED`, `UPDATED`, or `ACTION REQUIRED`.
+Process PRs sequentially. For each PR call:
 
-Do not stop on errors for individual PRs — record the error in the status column and continue to the next PR.
+```
+get_pr_details(host, token, repo=pr.repo, pr_number=pr.number)
+```
+
+Use the returned data to determine **Path A** or **Path B**.
 
 ---
 
 ## Determining Path A vs Path B
 
-**Has existing approve from the current user?**
+**Path A** — PR already has an APPROVED review from the current user AND automerge is set:
+- `reviews` contains an entry with `state == "APPROVED"` from you
+- `auto_merge_set == true`
 
-```bash
-gh pr view <number> --repo <owner/repo> --json reviews
-# Check reviews[].state == "APPROVED" and reviews[].author.login == current user
-```
-
-**Has automerge enabled?**
-
-```bash
-gh pr view <number> --repo <owner/repo> --json autoMergeRequest
-# autoMergeRequest != null means automerge is set
-```
-
-**Path A** (has approve AND automerge set): skip full analysis, go to CI + branch update check.
-**Path B** (missing approve or automerge): run full analysis.
+**Path B** — missing approve OR automerge not set: run full analysis.
 
 ---
 
 ## Path A: Already-Handled PR
 
-Check CI status:
-```bash
-gh pr view <number> --repo <owner/repo> --json statusCheckRollup
-```
-- `statusCheckRollup` contexts: check `state` field — `SUCCESS`, `PENDING`, `FAILURE`, `ERROR`.
-- If any check is `FAILURE` or `ERROR` → **ACTION REQUIRED**: leave a comment (see template below), set status `ACTION REQUIRED`.
-- If all checks are `SUCCESS` or `PENDING` → check branch staleness.
-
-Check if branch needs update:
-```bash
-gh pr view <number> --repo <owner/repo> --json mergeable,mergeStateStatus
-# mergeStateStatus == "BEHIND" means branch needs update
-```
-
-- If `mergeStateStatus == "BEHIND"`:
-  ```bash
-  gh pr update-branch <number> --repo <owner/repo>
-  ```
-  Set status: `UPDATED`.
-- Otherwise: set status `APPROVED`, no action.
+Check `ci_status` from `get_pr_details`:
+- `ci_status == "failing"` → call `post_action_required_comment` (reason: `"failing-ci"`), set status `ACTION REQUIRED`
+- Otherwise → call `prepare_merge`. If result is `"needs_manual_rebase"` → set status `ACTION REQUIRED` with message. If `"done"` → set status `UPDATED` if `branch_updated` else `APPROVED`.
 
 ---
 
 ## Path B: New / Unhandled PR — Full Analysis
 
-### Step B1: Fetch and classify the diff
+### Step B1: Classify
 
-Use the `dependabot-reviewer` agent's "Classifying the Diff" section.
+Use `diff_classification` from `get_pr_details`:
+- `type == "lock-only"` → safe, no changelog needed
+- `type == "manifest"` + `semver == "patch"` → safe, no changelog needed
+- `type == "manifest"` + `semver == "minor"` → fetch changelog
+- `type == "manifest"` + `semver == "major"` → fetch changelog, likely ACTION REQUIRED
 
-### Step B2: Check CI status
+### Step B2: Check CI
 
-```bash
-gh pr view <number> --repo <owner/repo> --json statusCheckRollup
+- `ci_status == "failing"` → ACTION REQUIRED (even if diff is safe)
+
+### Step B3: Fetch changelog (if needed)
+
+Derive `library_repo` from the PR diff or title:
+- For Go modules like `github.com/foo/bar` → `library_repo = "foo/bar"`
+- For npm packages with a known GitHub repo → use the repo URL from package metadata
+- For packages where the GitHub repo cannot be determined → skip changelog, treat as no breaking changes
+
 ```
-- Any `FAILURE` or `ERROR` → failing CI
-- `SUCCESS` or `PENDING` → not failing
+get_changelog(host, token, library_repo=..., new_version=pr.diff_classification.new_version)
+```
 
-### Step B3: Fetch changelog
-
-Use the `dependabot-reviewer` agent's "Fetching the Changelog" section.
-
-### Step B4: Decision
+### Step B4: Decision table
 
 | Condition | Decision |
 |-----------|----------|
-| Diff lock-only AND CI not failing AND no breaking changes | **APPROVE** |
-| Diff manifest, patch bump AND CI not failing AND no breaking changes | **APPROVE** |
-| Diff manifest, minor bump AND CI not failing AND changelog has no breaking changes | **APPROVE** |
-| Diff manifest, major bump | **ACTION REQUIRED** (unless changelog explicitly says no breaking changes) |
-| CI failing (any check FAILURE/ERROR) | **ACTION REQUIRED** |
-| Changelog mentions breaking changes, removed APIs, required migration | **ACTION REQUIRED** |
+| lock-only AND CI passing | APPROVE |
+| manifest, patch AND CI passing | APPROVE |
+| manifest, minor AND CI passing AND changelog has no breaking changes | APPROVE |
+| manifest, major AND changelog explicitly says no breaking changes | APPROVE |
+| manifest, major (default) | ACTION REQUIRED |
+| CI failing | ACTION REQUIRED |
+| Changelog mentions breaking changes, removed APIs, required migration | ACTION REQUIRED |
 
----
+### Step B5: Execute decision
 
-## Actions
+**APPROVE:**
 
-### APPROVE action sequence
-
-1. Post approve comment (see template)
-2. Approve the PR:
-   ```bash
-   gh pr review <number> --repo <owner/repo> --approve --body "<comment text>"
-   ```
-3. Enable automerge:
-   ```bash
-   gh pr merge <number> --repo <owner/repo> --auto --squash
-   ```
-   (Use `--squash` as default; if repo requires merge commits use `--merge`.)
-4. Approve any pending environment deployments:
-   ```bash
-   # Get the run ID of the WAITING check (e.g. select-environment)
-   gh pr view <number> --repo <owner/repo> --json statusCheckRollup
-   # For each run ID with status WAITING, check for pending deployments:
-   gh api /repos/<owner/repo>/actions/runs/<run_id>/pending_deployments
-   # If current_user_can_approve is true, approve each environment:
-   gh api --method POST \
-     -H "Accept: application/vnd.github+json" \
-     -H "X-GitHub-Api-Version: 2022-11-28" \
-     /repos/<owner/repo>/actions/runs/<run_id>/pending_deployments \
-     --input - <<< '{"environment_ids": [<env_id>], "state": "approved", "comment": "Approving environment for Dependabot PR"}'
-   ```
-   Skip this step if there are no WAITING checks.
-5. Check and update branch if needed:
-   ```bash
-   gh pr view <number> --repo <owner/repo> --json mergeStateStatus
-   # if BEHIND:
-   gh pr update-branch <number> --repo <owner/repo>
-   ```
-6. Set status: `APPROVED` (or `UPDATED` if branch was updated)
-
-### ACTION REQUIRED action sequence
-
-1. Post analysis comment (see template)
-2. Do NOT approve, do NOT set automerge
-3. Set status: `ACTION REQUIRED`
-
----
-
-## Comment Templates
-
-### Approve comment
-
+Build the comment body:
 ```
 Dependabot PR reviewed ✅
 
-**[library-name]**: v[old] → v[new]
+**[library]**: v[old] → v[new]
 **Type**: [patch | minor | major]
 
 **Changelog**:
-> [exact excerpt from release notes — include the full relevant section, not a summary]
+> [changelog excerpt, or "No changelog found." if not available]
 
 Auto-merge enabled.
 ```
 
-### ACTION REQUIRED comment — failing CI
-
+Then call:
 ```
-Dependabot PR requires manual action ⚠️
-
-**Reason**: CI checks are failing
-
-**Failing checks**:
-| Check | Status |
-|-------|--------|
-| [check name] | ❌ FAILURE |
-
-**Next steps**: Fix the failing tests or configuration before this PR can be merged. Once fixed, re-run `/dependabot-review` to process this PR.
+prepare_merge(host, token, repo, pr_number, comment=<body above>)
 ```
 
-### ACTION REQUIRED comment — breaking changes
+- `"done"` → status `APPROVED` (or `UPDATED` if `branch_updated`)
+- `"needs_manual_rebase"` → status `ACTION REQUIRED`, note merge conflict
+
+**ACTION REQUIRED:**
 
 ```
-Dependabot PR requires manual action ⚠️
-
-**Reason**: Breaking changes detected in changelog
-
-**[library-name]**: v[old] → v[new] ([patch | minor | major])
-
-**Relevant changelog excerpt**:
-> [exact excerpt mentioning breaking changes, removed APIs, or required migration steps]
-
-**Next steps**: Review the breaking changes above and update the codebase accordingly before approving this PR.
+post_action_required_comment(
+  host, token, repo, pr_number,
+  reason="failing-ci" | "breaking-changes",
+  failing_checks=...,     # from get_pr_details.failing_checks
+  library=..., old_version=..., new_version=..., semver=...,
+  changelog_excerpt=...   # for breaking-changes only
+)
 ```
+
+Set status `ACTION REQUIRED`.
 
 ---
 
-## Summary Table Format
+## Summary Table
 
-After processing all PRs, present two tables — one for `github.com`, one for `github.tools.sap`:
+Present two tables after processing all PRs:
 
 ### github.com
 
 | Repo | PR | Status |
 |------|----|--------|
-| `org/repo` | [#123](https://github.com/org/repo/pull/123) | ✅ APPROVED |
-| `org/repo` | [#456](https://github.com/org/repo/pull/456) | 🔄 UPDATED |
-| `org/repo` | [#789](https://github.com/org/repo/pull/789) | ⚠️ ACTION REQUIRED |
+| `org/repo` | [#123](url) | ✅ APPROVED |
+| `org/repo` | [#456](url) | 🔄 UPDATED |
+| `org/repo` | [#789](url) | ⚠️ ACTION REQUIRED |
 
 ### github.tools.sap
 
 | Repo | PR | Status |
 |------|----|--------|
-| `org/repo` | [#12](https://github.tools.sap/org/repo/pull/12) | ✅ APPROVED |
+| `org/repo` | [#12](url) | ✅ APPROVED |
 
-If no PRs found for a host, show: `No open Dependabot PRs awaiting review on [host].`
+If no PRs found for a host: `No open Dependabot PRs awaiting review on [host].`
 
 Status legend:
-- `✅ APPROVED` — approved, automerge set, branch up to date
-- `🔄 UPDATED` — was approved, branch updated to base
-- `⚠️ ACTION REQUIRED` — failing CI or breaking changes; comment left on PR
+- `✅ APPROVED` — approved, automerge set
+- `🔄 UPDATED` — was approved, branch updated or env deployments approved
+- `⚠️ ACTION REQUIRED` — failing CI, breaking changes, or merge conflict; comment left on PR
