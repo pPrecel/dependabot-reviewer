@@ -130,3 +130,62 @@ async def get_pr_details(host: str, token: str, repo: str, pr_number: int) -> di
         diff_classification=diff_classification,
         comments=comments,
     ).model_dump()
+
+
+@mcp.tool()
+async def get_changelog(host: str, token: str, library_repo: str, new_version: str) -> dict:
+    """
+    Fetch release notes for a library version.
+    Tries GitHub Releases first, then CHANGELOG.md.
+    library_repo: "owner/repo" of the library (not the PR repo).
+    new_version: e.g. "v1.42.1" or "1.42.1"
+    """
+    client = GithubClient(host, token)
+
+    # Normalise version — try with and without leading "v"
+    versions_to_try = [new_version]
+    if new_version.startswith("v"):
+        versions_to_try.append(new_version[1:])
+    else:
+        versions_to_try.append(f"v{new_version}")
+
+    for v in versions_to_try:
+        try:
+            release = await client.get_release(library_repo, v)
+            body = release.get("body") or ""
+            if body.strip():
+                return Changelog(found=True, excerpt=body.strip(), source="github-release").model_dump()
+        except Exception:
+            pass
+
+    # Fall back to CHANGELOG.md
+    try:
+        content = await client.get_file(library_repo, "CHANGELOG.md")
+        excerpt = _extract_changelog_section(content, new_version)
+        if excerpt:
+            return Changelog(found=True, excerpt=excerpt, source="changelog-file").model_dump()
+    except Exception:
+        pass
+
+    return Changelog(found=False, excerpt="", source="not-found").model_dump()
+
+
+def _extract_changelog_section(content: str, version: str) -> str:
+    """Extract the section for `version` from a CHANGELOG.md."""
+    # Normalise: strip leading "v" for matching
+    ver = version.lstrip("v")
+    lines = content.splitlines()
+    in_section = False
+    section_lines: list[str] = []
+    for line in lines:
+        if not in_section:
+            # Look for a heading containing the version
+            if ver in line and line.startswith("#"):
+                in_section = True
+                section_lines.append(line)
+        else:
+            # Next heading at same or higher level ends the section
+            if line.startswith("#") and ver not in line:
+                break
+            section_lines.append(line)
+    return "\n".join(section_lines).strip()
