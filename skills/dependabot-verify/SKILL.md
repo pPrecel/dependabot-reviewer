@@ -11,15 +11,22 @@ description: >
 
 You are executing the Dependabot PR verification workflow. Work autonomously — do not ask the user for input. Process all PRs and present results at the end. **Take no write actions.**
 
-Use the `dependabot-reviewer` agent for tooling detection and PR discovery instructions.
-
 ---
 
 ## Workflow
 
 ### Step 1: Detect tooling
 
-Delegate to the `dependabot-reviewer` agent for tooling detection instructions (MCP → gh → curl). Both read-only MCP tools (`mcp__github-ro__*`, `mcp__github-tools-ro__*`) and read-write tools are acceptable — no write access is used in this workflow.
+Detect which GitHub API tool is available. Use the first option that works. No write access is required.
+
+**Detection order:**
+
+1. **Read-only MCP tools** — prefer `mcp__github-ro__*` or `mcp__github-tools-ro__*` if present in the session. These are sufficient for all read operations in this workflow.
+2. **Read-write MCP tools** — use if read-only MCP tools are absent (they also support read operations).
+3. **`gh` CLI** — run `gh auth status` to confirm login. For `github.tools.sap` use `--hostname github.tools.sap`.
+4. **`curl`** — last resort. Use `GITHUB_TOKEN` or `GH_TOKEN` env vars. For `github.tools.sap` use base URL `https://github.tools.sap/api/v3`.
+
+Use only one tool for all subsequent GitHub API calls in this workflow. Never mix tools.
 
 ### Step 2: Discover PRs
 
@@ -45,12 +52,14 @@ gh pr view <number> --repo <owner/repo> \
   --json reviews,statusCheckRollup,autoMergeRequest,mergeStateStatus,comments
 ```
 
-**Via MCP tools:** Use `pull_request_read` with methods `get_reviews`, `get_status`, `get`, `get_comments` separately as needed.
+**Via MCP tools:** Use `pull_request_read` with methods `get_reviews`, `get_check_runs`, `get_status`, `get`, `get_comments` separately as needed. Use `get_check_runs` as the primary method for individual CI check states; `get_status` provides the combined commit status as a fallback.
 
 For each check in `statusCheckRollup` that has `state == WAITING`, also fetch pending deployments:
 ```bash
 gh api /repos/<owner/repo>/actions/runs/<run_id>/pending_deployments
 ```
+
+Note: Pending deployment detection requires `gh` CLI or `curl` — there is no MCP equivalent. If using MCP tools exclusively, skip the `WAITING FOR ENV` classification and record the check as `⏳ WAITING FOR CI` instead.
 
 **Classification priority (first matching condition wins):**
 
@@ -59,9 +68,12 @@ gh api /repos/<owner/repo>/actions/runs/<run_id>/pending_deployments
 | 1 | ⚠️ `ACTION REQUIRED` | Any CI check has `state == FAILURE` or `state == ERROR`, OR any PR comment contains the text "requires manual action ⚠️" |
 | 2 | 🔐 `WAITING FOR ENV` | At least one check has `state == WAITING` AND fetching its pending deployments returns a non-empty list |
 | 3 | 🔄 `NEEDS BRANCH UPDATE` | `mergeStateStatus == "BEHIND"` |
-| 4 | ⏳ `WAITING FOR CI` | No FAILURE/ERROR checks, automerge is set (`autoMergeRequest != null`), not BEHIND, but at least one check has `state == PENDING` or `state == IN_PROGRESS` |
+| 4 | ⏳ `WAITING FOR CI` | No FAILURE/ERROR checks, not BEHIND, but at least one check has `state == PENDING` or `state == IN_PROGRESS` |
 | 5 | 👀 `NEEDS REVIEW` | Current user has no `APPROVED` review AND no PR comment contains "Dependabot PR reviewed ✅" or "requires manual action ⚠️" |
 | 6 | ✅ `READY` | Current user has an `APPROVED` review, `autoMergeRequest != null`, all CI checks are `SUCCESS`, and `mergeStateStatus != "BEHIND"` |
+| 7 | 👀 `NEEDS REVIEW` | Catch-all: any PR that does not match any condition above |
+
+**Note on comment detection (Priority 1 and 5):** Comments to check are PR-level comments and review comments. On the `gh` CLI path, these are included in `--json comments`. On the MCP path, fetch them via `get_comments` method on `pull_request_read`. Look for comments whose body contains exactly "requires manual action ⚠️" (Priority 1) or "Dependabot PR reviewed ✅" (Priority 5).
 
 **Detail field per status:**
 - `⚠️ ACTION REQUIRED` → list failing check names, e.g. `CI: test-unit FAILURE`
@@ -70,6 +82,7 @@ gh api /repos/<owner/repo>/actions/runs/<run_id>/pending_deployments
 - `⏳ WAITING FOR CI` → count of pending checks, e.g. `3 checks pending`
 - `👀 NEEDS REVIEW` → `no review yet`
 - `✅ READY` → `—`
+- `👀 NEEDS REVIEW` (catch-all) → `needs attention`
 
 If fetching data for a PR fails, record status as `❌ ERROR` and detail as the error message. Continue to the next PR.
 
