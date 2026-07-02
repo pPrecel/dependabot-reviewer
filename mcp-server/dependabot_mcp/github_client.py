@@ -1,3 +1,7 @@
+import base64
+import os
+import re
+
 import httpx
 
 
@@ -64,7 +68,6 @@ class GithubClient:
 
     async def get_job_logs(self, repo: str, job_id: int) -> str:
         """Fetch CI job logs and write to /tmp file. Returns file path."""
-        import os, re
         log_dir = os.environ.get("DEPENDABOT_FIX_LOG_DIR", "/tmp/dependabot-fix-logs")
         os.makedirs(log_dir, exist_ok=True)
         repo_escaped = re.sub(r"[^a-zA-Z0-9_-]", "-", repo)
@@ -73,7 +76,9 @@ class GithubClient:
         # Follow redirect manually — httpx does not follow cross-origin redirects by default
         r = await self._client.get(f"/repos/{repo}/actions/jobs/{job_id}/logs", follow_redirects=False)
         if r.status_code in (301, 302, 303, 307, 308):
-            redirect_url = r.headers["location"]
+            redirect_url = r.headers.get("location")
+            if not redirect_url:
+                raise ValueError(f"GitHub returned {r.status_code} without a location header for job logs")
             async with httpx.AsyncClient() as plain_client:
                 r2 = await plain_client.get(redirect_url)
                 r2.raise_for_status()
@@ -88,7 +93,6 @@ class GithubClient:
 
     async def get_file_contents(self, repo: str, path: str, ref: str | None = None) -> dict:
         """Fetch a file's content and blob SHA from GitHub. Returns {content: str, sha: str}."""
-        import base64
         params = {}
         if ref:
             params["ref"] = ref
@@ -175,7 +179,6 @@ class GithubClient:
         head_sha: str,
     ) -> dict:
         """Atomically commit multiple files via GraphQL createCommitOnBranch."""
-        import base64
         additions = [
             {"path": f["path"], "contents": base64.b64encode(f["content"].encode()).decode()}
             for f in files
