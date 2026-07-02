@@ -1,5 +1,3 @@
-import base64
-
 import pytest
 import respx
 import httpx
@@ -58,25 +56,6 @@ async def test_get_pr_diff(gh):
     )
     result = await gh.get_pr_diff("owner/repo", 42)
     assert "go.mod" in result
-
-
-@respx.mock
-async def test_get_release(gh):
-    respx.get("https://api.github.com/repos/owner/lib/releases/tags/v1.0.1").mock(
-        return_value=httpx.Response(200, json={"body": "## What's Changed\n- fix: something"})
-    )
-    result = await gh.get_release("owner/lib", "v1.0.1")
-    assert "What's Changed" in result["body"]
-
-
-@respx.mock
-async def test_get_file(gh):
-    content = base64.b64encode(b"## v1.0.1\n- fix something").decode()
-    respx.get("https://api.github.com/repos/owner/lib/contents/CHANGELOG.md").mock(
-        return_value=httpx.Response(200, json={"content": content + "\n", "encoding": "base64"})
-    )
-    result = await gh.get_file("owner/lib", "CHANGELOG.md")
-    assert "fix something" in result
 
 
 @respx.mock

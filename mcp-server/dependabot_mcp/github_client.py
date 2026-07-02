@@ -1,4 +1,3 @@
-import base64
 import httpx
 
 
@@ -57,19 +56,6 @@ class GithubClient:
         )
         r.raise_for_status()
         return r.text
-
-    async def get_release(self, repo: str, tag: str) -> dict:
-        r = await self._client.get(f"/repos/{repo}/releases/tags/{tag}")
-        r.raise_for_status()
-        return r.json()
-
-    async def get_file(self, repo: str, path: str) -> str:
-        r = await self._client.get(f"/repos/{repo}/contents/{path}")
-        r.raise_for_status()
-        data = r.json()
-        if data.get("encoding") == "base64":
-            return base64.b64decode(data["content"].replace("\n", "")).decode()
-        return data.get("content", "")
 
     async def get_pending_deployments(self, repo: str, run_id: int) -> list[dict]:
         r = await self._client.get(f"/repos/{repo}/actions/runs/{run_id}/pending_deployments")
