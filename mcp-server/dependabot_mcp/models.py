@@ -59,7 +59,7 @@ class CommentResult(BaseModel):
 
 
 class CheckLog(BaseModel):
-    job_id: int
+    job_id: int     # GitHub Actions numeric job ID
     name: str
     file_path: str
 
