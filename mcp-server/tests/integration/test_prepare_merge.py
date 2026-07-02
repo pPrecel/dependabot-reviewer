@@ -164,7 +164,7 @@ async def test_prepare_merge_approves_env_using_workflow_run_id():
     )
     respx.get(f"{BASE}/repos/owner/repo/actions/runs/{WORKFLOW_RUN_ID}/pending_deployments").mock(
         return_value=httpx.Response(200, json=[
-            {"id": 15329854523, "current_user_can_approve": True, "environment": {"name": "restricted"}}
+            {"id": 15329854523, "current_user_can_approve": True, "environment": {"id": 99, "name": "restricted"}}
         ])
     )
     respx.post(f"{BASE}/repos/owner/repo/actions/runs/{WORKFLOW_RUN_ID}/pending_deployments").mock(
