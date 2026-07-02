@@ -106,6 +106,33 @@ RENOVATE_NO_NOTES_SECTION = """This PR contains the following updates:
 ### Configuration
 """
 
+RENOVATE_WITH_REAL_NOTES = """This PR contains the following updates:
+
+| Package | Change |
+|---|---|
+| github.com/google/go-containerregistry | v0.21.6 → v0.21.7 |
+
+---
+
+### Release Notes
+
+google/go-containerregistry (github.com/google/go-containerregistry)
+
+### [`v0.21.7`](https://github.com/google/go-containerregistry/releases/tag/v0.21.7)
+
+[Compare Source](https://github.com/google/go-containerregistry/compare/v0.21.6...v0.21.7)
+
+#### What's Changed
+
+- tarball: return error instead of panicking on missing rootfs.diff_ids
+- gcrane: honor --platform flag in copy
+- mutate: verify layer digests in Extract and Time
+
+---
+
+### Configuration
+"""
+
 
 def test_dependabot_release_notes_html():
     result = extract_changelog(DEPENDABOT_RELEASE_NOTES)
@@ -126,10 +153,14 @@ def test_dependabot_no_changelog_returns_empty():
     assert result == ""
 
 
-def test_renovate_with_real_notes():
+def test_renovate_with_only_compare_links_returns_empty():
     result = extract_changelog(RENOVATE_WITH_NOTES)
-    assert "v29.6.1" in result
-    assert "v29.6.0" in result
+    assert result == ""
+
+
+def test_renovate_with_real_notes():
+    result = extract_changelog(RENOVATE_WITH_REAL_NOTES)
+    assert "What's Changed" in result
 
 
 def test_renovate_compare_links_only_returns_empty():
@@ -154,5 +185,12 @@ def test_none_body_returns_empty():
 def test_truncates_at_2000_chars():
     long_notes = "x" * 3000
     body = f"### Release Notes\n\n{long_notes}\n\n---\n"
+    result = extract_changelog(body)
+    assert len(result) <= 2000
+
+
+def test_truncates_at_2000_chars_dependabot():
+    long_content = "x" * 3000
+    body = f"Release notes\n<p>source</p>\n<blockquote><p>{long_content}</p></blockquote>\n"
     result = extract_changelog(body)
     assert len(result) <= 2000
