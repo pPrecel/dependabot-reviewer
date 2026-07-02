@@ -81,16 +81,12 @@ Use `diff_classification` from `get_pr_details`:
 
 - `ci_status == "failing"` → ACTION REQUIRED (even if diff is safe)
 
-### Step B3: Fetch changelog (if needed)
+### Step B3: Read changelog (from PR details)
 
-Derive `library_repo` from the PR diff or title:
-- For Go modules like `github.com/foo/bar` → `library_repo = "foo/bar"`
-- For npm packages with a known GitHub repo → use the repo URL from package metadata
-- For packages where the GitHub repo cannot be determined → skip changelog, treat as no breaking changes
+The changelog is already available in `diff_classification.changelog_excerpt` from the `get_pr_details` result fetched in Step B1. No additional tool call is needed.
 
-```
-get_changelog(host, token, library_repo=..., new_version=pr.diff_classification.new_version)
-```
+- If `changelog_excerpt` is non-empty → use it for breaking-change analysis in Step B4
+- If `changelog_excerpt` is empty → treat as no changelog available; apply conservative defaults from decision table
 
 ### Step B4: Decision table
 
