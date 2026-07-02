@@ -1,3 +1,5 @@
+import os
+import base64
 import pytest
 import respx
 import httpx
@@ -94,3 +96,61 @@ async def test_approve_deployment(gh):
     ).mock(return_value=httpx.Response(200, json=[{"id": 456, "state": "approved"}]))
     result = await gh.approve_deployment("owner/repo", 123, [456])
     assert result[0]["state"] == "approved"
+
+
+@respx.mock
+async def test_get_job_logs_writes_file(gh, tmp_path, monkeypatch):
+    monkeypatch.setenv("DEPENDABOT_FIX_LOG_DIR", str(tmp_path))
+    log_content = "Step 1\nStep 2\nERROR: test failed"
+    # GitHub returns 302 redirect to a direct URL
+    respx.get("https://api.github.com/repos/owner/repo/actions/jobs/99/logs").mock(
+        return_value=httpx.Response(302, headers={"location": "https://logs.example.com/99.txt"})
+    )
+    respx.get("https://logs.example.com/99.txt").mock(
+        return_value=httpx.Response(200, text=log_content)
+    )
+    file_path = await gh.get_job_logs("owner/repo", 99)
+    assert os.path.exists(file_path)
+    with open(file_path) as f:
+        assert "ERROR: test failed" in f.read()
+
+
+@respx.mock
+async def test_get_file_contents(gh):
+    content = "module github.com/owner/repo\n\ngo 1.21\n"
+    encoded = base64.b64encode(content.encode()).decode()
+    respx.get("https://api.github.com/repos/owner/repo/contents/go.mod").mock(
+        return_value=httpx.Response(200, json={
+            "content": encoded + "\n",
+            "sha": "abc123",
+            "encoding": "base64",
+        })
+    )
+    result = await gh.get_file_contents("owner/repo", "go.mod", ref="dependabot/go/foo-2.0.0")
+    assert "go 1.21" in result["content"]
+    assert result["sha"] == "abc123"
+
+
+@respx.mock
+async def test_commit_files_graphql(gh):
+    respx.post("https://api.github.com/graphql").mock(
+        return_value=httpx.Response(200, json={
+            "data": {
+                "createCommitOnBranch": {
+                    "commit": {
+                        "oid": "def456abc789",
+                        "url": "https://github.com/owner/repo/commit/def456abc789",
+                    }
+                }
+            }
+        })
+    )
+    result = await gh.commit_files_graphql(
+        repo="owner/repo",
+        branch="dependabot/go/foo-2.0.0",
+        files=[{"path": "go.mod", "content": "module github.com/owner/repo\n"}],
+        message="fix: resolve merge conflicts [dependabot skip]",
+        head_sha="abc123def456",
+    )
+    assert result["commit_sha"] == "def456abc789"
+    assert "commit" in result["commit_url"]

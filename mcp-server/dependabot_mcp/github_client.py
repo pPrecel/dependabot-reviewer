@@ -62,6 +62,42 @@ class GithubClient:
         r.raise_for_status()
         return r.json()
 
+    async def get_job_logs(self, repo: str, job_id: int) -> str:
+        """Fetch CI job logs and write to /tmp file. Returns file path."""
+        import os, re
+        log_dir = os.environ.get("DEPENDABOT_FIX_LOG_DIR", "/tmp/dependabot-fix-logs")
+        os.makedirs(log_dir, exist_ok=True)
+        repo_escaped = re.sub(r"[^a-zA-Z0-9_-]", "-", repo)
+        file_path = os.path.join(log_dir, f"{repo_escaped}-{job_id}.txt")
+
+        # Follow redirect manually — httpx does not follow cross-origin redirects by default
+        r = await self._client.get(f"/repos/{repo}/actions/jobs/{job_id}/logs", follow_redirects=False)
+        if r.status_code in (301, 302, 303, 307, 308):
+            redirect_url = r.headers["location"]
+            async with httpx.AsyncClient() as plain_client:
+                r2 = await plain_client.get(redirect_url)
+                r2.raise_for_status()
+                log_text = r2.text
+        else:
+            r.raise_for_status()
+            log_text = r.text
+
+        with open(file_path, "w") as f:
+            f.write(log_text)
+        return file_path
+
+    async def get_file_contents(self, repo: str, path: str, ref: str | None = None) -> dict:
+        """Fetch a file's content and blob SHA from GitHub. Returns {content: str, sha: str}."""
+        import base64
+        params = {}
+        if ref:
+            params["ref"] = ref
+        r = await self._client.get(f"/repos/{repo}/contents/{path}", params=params)
+        r.raise_for_status()
+        data = r.json()
+        raw = base64.b64decode(data["content"].replace("\n", "")).decode("utf-8", errors="replace")
+        return {"content": raw, "sha": data["sha"]}
+
     # ── Write ─────────────────────────────────────────────────────────────
 
     async def post_review(self, repo: str, number: int, body: str) -> dict:
@@ -129,6 +165,50 @@ class GithubClient:
         )
         r.raise_for_status()
         return r.json()
+
+    async def commit_files_graphql(
+        self,
+        repo: str,
+        branch: str,
+        files: list[dict],  # [{path: str, content: str}]
+        message: str,
+        head_sha: str,
+    ) -> dict:
+        """Atomically commit multiple files via GraphQL createCommitOnBranch."""
+        import base64
+        additions = [
+            {"path": f["path"], "contents": base64.b64encode(f["content"].encode()).decode()}
+            for f in files
+        ]
+        query = """
+        mutation($input: CreateCommitOnBranchInput!) {
+          createCommitOnBranch(input: $input) {
+            commit { oid url }
+          }
+        }
+        """
+        variables = {
+            "input": {
+                "branch": {"repositoryNameWithOwner": repo, "branchName": branch},
+                "message": {"headline": message},
+                "fileChanges": {"additions": additions},
+                "expectedHeadOid": head_sha,
+            }
+        }
+        base = str(self._client.base_url)
+        if "api.github.com" in base:
+            graphql_url = "https://api.github.com/graphql"
+        else:
+            host = base.split("/")[2]
+            graphql_url = f"https://{host}/api/graphql"
+
+        r = await self._client.post(graphql_url, json={"query": query, "variables": variables})
+        r.raise_for_status()
+        data = r.json()
+        if "errors" in data:
+            raise ValueError(f"GraphQL errors: {data['errors']}")
+        commit = data["data"]["createCommitOnBranch"]["commit"]
+        return {"commit_sha": commit["oid"], "commit_url": commit["url"]}
 
     async def __aenter__(self) -> "GithubClient":
         return self
