@@ -374,7 +374,10 @@ async def get_pr_head_sha(host: str, token: str, repo: str, pr_number: int) -> s
     """
     client = GithubClient(host, token)
     pr = await client.get_pr(repo, pr_number)
-    return pr["head"]["sha"]
+    head = pr.get("head")
+    if not head or not head.get("sha"):
+        raise ValueError(f"PR {pr_number} in {repo} has no head SHA (PR may be closed or from a deleted fork)")
+    return head["sha"]
 
 
 @mcp.tool()
