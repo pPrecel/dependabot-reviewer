@@ -15,27 +15,25 @@ All GitHub I/O is performed through the `dependabot-reviewer` MCP server tools. 
 
 ---
 
-## Step 1: Acquire tokens
+## Step 1: Discover hosts and acquire tokens
 
 ```bash
-TOKEN_GH=$(gh auth token)
-TOKEN_SAP=$(GH_HOST=github.tools.sap gh auth token 2>/dev/null || echo "")
+gh auth status --show-token
 ```
 
-If `TOKEN_SAP` is empty, skip `github.tools.sap` processing and note it in the summary.
+Parse the output to extract every host and its token. Build a list of `{host, token}` pairs — one per authenticated host. Process all of them; do not hardcode any host names.
 
 ---
 
 ## Step 2: Discover PRs
 
-For each host that has a token, call:
+For each discovered host, call:
 
 ```
-list_dependabot_prs(host="github.com", token=TOKEN_GH)
-list_dependabot_prs(host="github.tools.sap", token=TOKEN_SAP)   # if token available
+list_dependabot_prs(host=<host>, token=<token>)
 ```
 
-Collect results into two lists. Each item: `{number, repo, title, url}`.
+Collect results into one list per host. Each item: `{number, repo, title, url}`.
 
 ---
 
@@ -149,9 +147,9 @@ Set status `ACTION REQUIRED`.
 
 ## Summary Table
 
-Present two tables after processing all PRs:
+Present one table per host after processing all PRs:
 
-### github.com
+### <host>
 
 | Repo | PR | Status |
 |------|----|--------|
@@ -159,13 +157,7 @@ Present two tables after processing all PRs:
 | `org/repo` | [#456](url) | 🔄 UPDATED |
 | `org/repo` | [#789](url) | ⚠️ ACTION REQUIRED |
 
-### github.tools.sap
-
-| Repo | PR | Status |
-|------|----|--------|
-| `org/repo` | [#12](url) | ✅ APPROVED |
-
-If no PRs found for a host: `No open Dependabot PRs awaiting review on [host].`
+If no PRs found for a host: `No open Dependabot PRs awaiting review on <host>.`
 
 Status legend:
 - `✅ APPROVED` — approved, automerge set

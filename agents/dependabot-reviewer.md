@@ -27,29 +27,35 @@ This plugin ships a Python MCP server (`dependabot-reviewer`) that handles all G
 | `post_action_required_comment(host, token, repo, pr_number, reason, library, old_version, new_version, semver, failing_checks?, changelog_excerpt?)` | Post a structured ACTION REQUIRED comment. `reason`: `"failing-ci"` or `"breaking-changes"`. |
 
 **Parameters common to all tools:**
-- `host` — `"github.com"` or `"github.tools.sap"`
-- `token` — GitHub authentication token
-
-**Token acquisition:**
-```bash
-TOKEN_GH=$(gh auth token)
-TOKEN_SAP=$(GH_HOST=github.tools.sap gh auth token 2>/dev/null || echo "")
-```
-If `TOKEN_SAP` is empty, skip `github.tools.sap` processing.
+- `host` — the GitHub host hostname (e.g. `"github.com"` or any other host)
+- `token` — GitHub authentication token for that host
 
 If the `dependabot-reviewer` MCP server is not present in the session, stop and report an error. Do not fall back to `gh` CLI or `curl`.
 
 ---
 
+## Discovering Hosts and Acquiring Tokens
+
+Run:
+
+```bash
+gh auth status --show-token
+```
+
+Parse the output to extract every host and its token. The output lists hosts as top-level labels followed by indented fields including `Token: <value>`. Build a list of `{host, token}` pairs — one per authenticated host. Process all of them; do not hardcode any host names.
+
+If a host shows an error state, skip it and note it in the summary.
+
+---
+
 ## Finding Dependabot PRs
 
-> **Note on Dependabot author identity**: On `github.com`, Dependabot is a GitHub App — use `author:app/dependabot`. On `github.tools.sap` (GitHub Enterprise Server), Dependabot is a regular user — use `author:dependabot` (without `app/`).
+> **Note on Dependabot author identity**: On `github.com`, Dependabot is a GitHub App — use `author:app/dependabot`. On GitHub Enterprise Server hosts, Dependabot is a regular user — use `author:dependabot` (without `app/`).
 
-For each host that has a token, call:
+For each discovered host, call:
 
 ```
-list_dependabot_prs(host="github.com", token=TOKEN_GH)
-list_dependabot_prs(host="github.tools.sap", token=TOKEN_SAP)   # if token available
+list_dependabot_prs(host=<host>, token=<token>)
 ```
 
 The tool runs both `review-requested:@me` and `reviewed-by:@me` queries internally and deduplicates. Each item: `{number, repo, title, url}`.

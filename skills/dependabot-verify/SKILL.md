@@ -17,27 +17,25 @@ All GitHub I/O is performed through the `dependabot-reviewer` MCP server tools. 
 
 ## Workflow
 
-### Step 1: Acquire tokens
+### Step 1: Discover hosts and acquire tokens
 
 ```bash
-TOKEN_GH=$(gh auth token)
-TOKEN_SAP=$(GH_HOST=github.tools.sap gh auth token 2>/dev/null || echo "")
+gh auth status --show-token
 ```
 
-If `TOKEN_SAP` is empty, skip `github.tools.sap` processing and note it in the summary.
+Parse the output to extract every host and its token. Build a list of `{host, token}` pairs — one per authenticated host. Process all of them; do not hardcode any host names.
 
 ---
 
 ### Step 2: Discover PRs
 
-For each host that has a token, call:
+For each discovered host, call:
 
 ```
-list_dependabot_prs(host="github.com", token=TOKEN_GH)
-list_dependabot_prs(host="github.tools.sap", token=TOKEN_SAP)   # if token available
+list_dependabot_prs(host=<host>, token=<token>)
 ```
 
-Collect results into two lists (one per host), deduplicated by PR number. If a host returns an error, record the error and continue with the other host.
+Collect results into one list per host, deduplicated by PR number. If a host returns an error, record the error and continue with the other hosts.
 
 ---
 
@@ -84,24 +82,20 @@ If fetching data for a PR fails, record status as `❌ ERROR` and detail as the 
 
 ### Step 4: Present summary tables
 
-After all PRs are processed, display two tables — one for `github.com`, one for `github.tools.sap`:
+After all PRs are processed, display one table per host:
 
-#### github.com
+#### <host>
 
 | Repo | PR | Status | Detail |
 |------|----|--------|--------|
-| `org/repo` | [#123](https://github.com/org/repo/pull/123) | ✅ READY | — |
-| `org/repo` | [#456](https://github.com/org/repo/pull/456) | ⚠️ ACTION REQUIRED | CI: test-unit FAILURE |
-| `org/repo` | [#789](https://github.com/org/repo/pull/789) | ⏳ WAITING FOR CI | 3 checks pending |
-| `org/repo` | [#102](https://github.com/org/repo/pull/102) | 🔄 NEEDS BRANCH UPDATE | branch is behind main |
-| `org/repo` | [#103](https://github.com/org/repo/pull/103) | 👀 NEEDS REVIEW | no review yet |
+| `org/repo` | [#123](url) | ✅ READY | — |
+| `org/repo` | [#456](url) | ⚠️ ACTION REQUIRED | CI: test-unit FAILURE |
+| `org/repo` | [#789](url) | ⏳ WAITING FOR CI | 3 checks pending |
+| `org/repo` | [#102](url) | 🔄 NEEDS BRANCH UPDATE | branch is behind main |
+| `org/repo` | [#103](url) | 👀 NEEDS REVIEW | no review yet |
 
-#### github.tools.sap
-
-_(same format)_
-
-If no PRs were found on either host, say so explicitly:
-`No open Dependabot PRs awaiting review on [host].`
+If no PRs were found for a host, say so explicitly:
+`No open Dependabot PRs awaiting review on <host>.`
 
 **Status legend:**
 - `✅ READY` — approved, automerge set, all CI green, branch up to date
