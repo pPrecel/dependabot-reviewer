@@ -8,7 +8,7 @@
       "name": "dependabot-reviewer",
       "displayName": "Dependabot Reviewer",
       "description": "Review all open Dependabot PRs requiring your review across all GitHub hosts you are authenticated with. Approves safe updates, sets automerge, updates branches, and flags PRs that require manual action.",
-      "version": "2.0.1",
+      "version": "2.1.0",
       "author": {
         "name": "pPrecel"
       },
