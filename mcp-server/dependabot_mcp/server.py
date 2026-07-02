@@ -281,3 +281,67 @@ async def post_action_required_comment(
     client = GithubClient(host, token)
     result = await client.post_comment(repo, pr_number, body)
     return CommentResult(comment_url=result["html_url"]).model_dump()
+
+
+@mcp.tool()
+async def get_check_logs(host: str, token: str, repo: str, check_run_id: int) -> dict:
+    """
+    Fetch full logs for a failing CI check run.
+    Maps check_run_id → job_id via check-run details_url, then downloads logs.
+    Writes logs to /tmp/dependabot-fix-logs/ and returns {job_id, name, file_path}.
+    """
+    client = GithubClient(host, token)
+    r = await client._client.get(f"/repos/{repo}/check-runs/{check_run_id}")
+    r.raise_for_status()
+    check_run = r.json()
+    name = check_run.get("name", str(check_run_id))
+    details_url = check_run.get("details_url", "")
+    # Extract job_id from details_url: .../actions/runs/{run_id}/job/{job_id}
+    # Fall back to check_run_id if pattern not found
+    parts = details_url.rstrip("/").split("/")
+    try:
+        job_id = int(parts[-1])
+    except (ValueError, IndexError):
+        job_id = check_run_id
+
+    file_path = await client.get_job_logs(repo, job_id)
+    return CheckLog(job_id=job_id, name=name, file_path=file_path).model_dump()
+
+
+@mcp.tool()
+async def commit_files(
+    host: str,
+    token: str,
+    repo: str,
+    branch: str,
+    files: list[dict],
+    message: str,
+    head_sha: str,
+) -> dict:
+    """
+    Atomically commit one or more file changes to a branch via GraphQL createCommitOnBranch.
+    files: list of {path: str, content: str} (raw text, server Base64-encodes it).
+    head_sha: current HEAD SHA of the branch (expectedHeadOid for optimistic concurrency).
+    Include [dependabot skip] in message to prevent Dependabot from force-pushing over the fix.
+    Returns {commit_sha, commit_url}.
+    """
+    client = GithubClient(host, token)
+    result = await client.commit_files_graphql(
+        repo=repo,
+        branch=branch,
+        files=files,
+        message=message,
+        head_sha=head_sha,
+    )
+    return CommitResult(**result).model_dump()
+
+
+@mcp.tool()
+async def post_comment(host: str, token: str, repo: str, pr_number: int, body: str) -> dict:
+    """
+    Post a plain-text comment on a PR/issue.
+    Returns {comment_url}.
+    """
+    client = GithubClient(host, token)
+    result = await client.post_comment(repo, pr_number, body)
+    return CommentResult(comment_url=result["html_url"]).model_dump()
