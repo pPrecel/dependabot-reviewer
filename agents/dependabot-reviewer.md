@@ -54,13 +54,6 @@ list_dependabot_prs(host="github.tools.sap", token=TOKEN_SAP)   # if token avail
 
 The tool runs both `review-requested:@me` and `reviewed-by:@me` queries internally and deduplicates. Each item: `{number, repo, title, url}`.
 
-For `github.com`, also run Query 1 — all Dependabot PRs in the `kyma-project` org — via a second `list_dependabot_prs` call is not sufficient; this query must be run separately. Use the `gh` CLI only for this specific query and merge results:
-
-```bash
-gh search prs --author app/dependabot --owner kyma-project --state open \
-  --json number,title,url,repository --limit 100
-```
-
 If the MCP server returns an error for a given host, record the error and stop processing that host.
 
 ---

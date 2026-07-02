@@ -37,13 +37,6 @@ list_dependabot_prs(host="github.com", token=TOKEN_GH)
 list_dependabot_prs(host="github.tools.sap", token=TOKEN_SAP)   # if token available
 ```
 
-For `github.com`, also fetch all Dependabot PRs in the `kyma-project` org. The `list_dependabot_prs` tool does not cover the org-wide query — run it via `gh` CLI and merge results:
-
-```bash
-gh search prs --author app/dependabot --owner kyma-project --state open \
-  --json number,title,url,repository --limit 100
-```
-
 Collect results into two lists (one per host), deduplicated by PR number. If a host returns an error, record the error and continue with the other host.
 
 ---
