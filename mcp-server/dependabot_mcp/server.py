@@ -6,6 +6,7 @@ from .body_parser import extract_changelog
 from .models import (
     PRSummary, Review, CheckResult, DiffClassification,
     PRDetails, Comment, PrepareMergeResult, CommentResult,
+    CheckLog, CommitResult,
 )
 
 mcp = FastMCP("dependabot-reviewer")
@@ -205,7 +206,7 @@ async def prepare_merge(host: str, token: str, repo: str, pr_number: int, commen
     for run_id in waiting_run_ids:
         try:
             deployments = await client.get_pending_deployments(repo, run_id)
-            approvable = [d["id"] for d in deployments if d.get("current_user_can_approve")]
+            approvable = [d["environment"]["id"] for d in deployments if d.get("current_user_can_approve")]
             if approvable:
                 await client.approve_deployment(repo, run_id, approvable)
                 envs_approved += len(approvable)
