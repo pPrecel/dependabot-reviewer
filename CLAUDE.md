@@ -20,6 +20,18 @@ When bumping the version, **always update both files together**:
 
 Both must always be in sync.
 
+## Release process
+
+After bumping the version and committing:
+
+1. Create and push a git tag matching the version:
+   ```
+   git tag v<version>
+   git push origin v<version>
+   ```
+
+Without the tag, `/plugin` will report the plugin is already up to date even though the commit is new — the marketplace uses the tag to detect new versions.
+
 ## Architecture
 
 ### Separation of concerns (enforced)
