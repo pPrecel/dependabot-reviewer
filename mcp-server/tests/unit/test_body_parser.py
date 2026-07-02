@@ -148,6 +148,14 @@ def test_dependabot_prefers_release_notes_over_changelog():
     assert "New features added" in result
 
 
+def test_dependabot_release_notes_excludes_changelog_section():
+    result = extract_changelog(DEPENDABOT_CHANGELOG_SECTION)
+    # Should contain release notes content
+    assert "New features added" in result
+    # Should NOT contain changelog section content (sibling blockquote)
+    assert "feat: add new thing" not in result
+
+
 def test_dependabot_no_changelog_returns_empty():
     result = extract_changelog(DEPENDABOT_NO_CHANGELOG)
     assert result == ""

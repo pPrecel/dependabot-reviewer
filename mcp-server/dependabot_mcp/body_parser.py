@@ -22,7 +22,8 @@ def _html_to_text(html_str: str) -> str:
 
 
 # Matches Renovate package-source attribution lines, e.g. "docker/cli (github.com/docker/cli)"
-_RENOVATE_ATTRIBUTION_RE = re.compile(r"^[\w./\-]+ \([\w./\-]+\)$")
+# Also matches @-scoped packages, e.g. "@angular/core (github.com/angular/angular)"
+_RENOVATE_ATTRIBUTION_RE = re.compile(r"^[@\w./\-]+ \([@\w./\-]+\)$")
 
 
 def _is_compare_links_only(text: str) -> bool:
@@ -47,29 +48,24 @@ _RENOVATE_RE = re.compile(
     re.DOTALL | re.MULTILINE,
 )
 
-# Dependabot: <blockquote> immediately following "Release notes" heading.
-# The outer blockquote regex uses a greedy inner match; we post-process the
-# captured content to strip any nested blockquote tags.
-_DEPENDABOT_BLOCKQUOTE_RE = re.compile(
-    r"Release notes\s*\n.*?<blockquote>(.*)</blockquote>",
-    re.DOTALL | re.IGNORECASE,
-)
 
-# Matches innermost nested <blockquote>…</blockquote> pairs for stripping.
-_NESTED_BLOCKQUOTE_RE = re.compile(
-    r"<blockquote>[^<]*(?:<(?!/?blockquote)[^<]*)*</blockquote>",
-    re.DOTALL | re.IGNORECASE,
-)
-
-
-def _strip_nested_blockquotes(html_str: str) -> str:
-    """Iteratively remove nested <blockquote>…</blockquote> pairs until none remain."""
-    prev = None
-    result = html_str
-    while prev != result:
-        prev = result
-        result = _NESTED_BLOCKQUOTE_RE.sub("", result)
-    return result
+def _extract_dependabot_blockquote(body: str) -> str:
+    """Extract text from first <blockquote> after 'Release notes' heading."""
+    # Find "Release notes" heading (case-insensitive)
+    lower = body.lower()
+    heading_pos = lower.find("release notes\n")
+    if heading_pos == -1:
+        return ""
+    # Find first <blockquote> after the heading
+    start = body.find("<blockquote>", heading_pos)
+    if start == -1:
+        return ""
+    start += len("<blockquote>")
+    # Find matching </blockquote> — first one after <blockquote>
+    end = body.find("</blockquote>", start)
+    if end == -1:
+        return ""
+    return body[start:end]
 
 
 def extract_changelog(body: str | None) -> str:
@@ -84,11 +80,8 @@ def extract_changelog(body: str | None) -> str:
             return content[:_MAX_LEN]
 
     # 2. Try dependabot HTML blockquote under "Release notes" heading.
-    # Use a greedy match to capture up to the LAST </blockquote>, then strip
-    # any nested blockquote tags from the captured content.
-    m = _DEPENDABOT_BLOCKQUOTE_RE.search(body)
-    if m:
-        inner = _strip_nested_blockquotes(m.group(1))
+    inner = _extract_dependabot_blockquote(body)
+    if inner:
         text = _html_to_text(inner)
         if text:
             return text[:_MAX_LEN]
