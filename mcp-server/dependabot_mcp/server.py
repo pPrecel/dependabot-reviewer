@@ -182,9 +182,25 @@ async def prepare_merge(host: str, token: str, repo: str, pr_number: int, commen
     checks_r.raise_for_status()
     checks = checks_r.json().get("check_runs", [])
 
+    def _workflow_run_id(check: dict) -> int | None:
+        """Extract workflow run ID from check-run details_url.
+
+        details_url format: .../actions/runs/{workflow_run_id}/job/{check_run_id}
+        The pending_deployments endpoint requires the workflow run ID, not the
+        check-run ID — using the check-run ID causes 404s.
+        """
+        url = check.get("details_url", "")
+        parts = url.split("/")
+        try:
+            idx = parts.index("runs")
+            return int(parts[idx + 1])
+        except (ValueError, IndexError):
+            return None
+
     waiting_run_ids = [
-        c["id"] for c in checks
+        wid for c in checks
         if c.get("status") == "waiting" or c.get("conclusion") == "waiting"
+        if (wid := _workflow_run_id(c)) is not None
     ]
     for run_id in waiting_run_ids:
         try:
