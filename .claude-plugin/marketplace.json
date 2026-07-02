@@ -7,8 +7,8 @@
     {
       "name": "dependabot-reviewer",
       "displayName": "Dependabot Reviewer",
-      "description": "Review all open Dependabot and ospo-renovate PRs requiring your review across all GitHub hosts you are authenticated with. Approves safe updates, sets automerge, updates branches, and flags PRs that require manual action.",
-      "version": "2.3.1",
+      "description": "Review, verify, and fix open Dependabot and ospo-renovate PRs across all GitHub hosts you are authenticated with. Approves safe updates, sets automerge, updates branches, flags PRs requiring manual action, and autonomously fixes merge conflicts and failing CI.",
+      "version": "2.4.0",
       "author": {
         "name": "pPrecel"
       },
