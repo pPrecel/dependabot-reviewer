@@ -343,3 +343,49 @@ async def post_pr_comment(host: str, token: str, repo: str, pr_number: int, body
     client = GithubClient(host, token)
     result = await client.post_comment(repo, pr_number, body)
     return CommentResult(comment_url=result["html_url"]).model_dump()
+
+
+@mcp.tool()
+async def get_raw_diff(host: str, token: str, repo: str, pr_number: int) -> str:
+    """
+    Fetch the raw unified diff of a pull request.
+    Returns the diff as plain text. Use to find conflict markers (<<<<<<<).
+    """
+    client = GithubClient(host, token)
+    return await client.get_pr_diff(repo, pr_number)
+
+
+@mcp.tool()
+async def get_file_contents(host: str, token: str, repo: str, path: str, ref: str | None = None) -> dict:
+    """
+    Fetch a file's content and blob SHA from a repository.
+    ref: branch name, tag, or commit SHA (optional, defaults to default branch).
+    Returns {content: str, sha: str} where content is decoded plain text.
+    """
+    client = GithubClient(host, token)
+    return await client.get_file_contents(repo, path, ref=ref)
+
+
+@mcp.tool()
+async def get_pr_head_sha(host: str, token: str, repo: str, pr_number: int) -> str:
+    """
+    Get the current HEAD SHA of a pull request branch.
+    Returns the SHA string. Re-fetch this after each commit_files call.
+    """
+    client = GithubClient(host, token)
+    pr = await client.get_pr(repo, pr_number)
+    return pr["head"]["sha"]
+
+
+@mcp.tool()
+async def get_check_run_ids(host: str, token: str, repo: str, head_sha: str) -> list[dict]:
+    """
+    List all check runs for a commit SHA.
+    Returns list of {id, name, conclusion, status} for use with get_check_logs.
+    """
+    client = GithubClient(host, token)
+    checks = await client.list_check_runs(repo, head_sha)
+    return [
+        {"id": c["id"], "name": c["name"], "conclusion": c.get("conclusion"), "status": c.get("status")}
+        for c in checks
+    ]

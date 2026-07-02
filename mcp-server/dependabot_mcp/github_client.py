@@ -107,6 +107,14 @@ class GithubClient:
         raw = base64.b64decode(data["content"].replace("\n", "")).decode("utf-8", errors="replace")
         return {"content": raw, "sha": data["sha"]}
 
+    async def list_check_runs(self, repo: str, head_sha: str) -> list[dict]:
+        r = await self._client.get(
+            f"/repos/{repo}/commits/{head_sha}/check-runs",
+            params={"per_page": 100},
+        )
+        r.raise_for_status()
+        return r.json().get("check_runs", [])
+
     # ── Write ─────────────────────────────────────────────────────────────
 
     async def post_review(self, repo: str, number: int, body: str) -> dict:

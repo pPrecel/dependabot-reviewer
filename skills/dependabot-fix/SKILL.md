@@ -71,21 +71,24 @@ For each entry in the index that matches the current problem type (`merge-confli
 
 ### Step 4b: Fix merge conflict (if `merge_state == "dirty"`)
 
-1. Call `get_pr_diff` via `gh api /repos/{repo}/pulls/{pr_number}` with `Accept: application/vnd.github.v3.diff` header to get the raw diff. Identify files containing `<<<<<<<` conflict markers.
+1. Call `get_raw_diff(host, token, repo, pr_number)` to get the raw diff text. Identify files containing `<<<<<<<` conflict markers.
 
-2. For each conflicted file, fetch its content from both branches:
-   - PR branch: `gh api /repos/{repo}/contents/{path}?ref={pr_branch}`
-   - Base branch: `gh api /repos/{repo}/contents/{path}?ref={base_branch}`
+2. For each conflicted file, fetch its content from the PR branch:
+   ```
+   get_file_contents(host, token, repo, path=<path>, ref=<pr_branch>)
+   ```
+   The base branch version is available for reference if needed:
+   ```
+   get_file_contents(host, token, repo, path=<path>, ref=<base_branch>)
+   ```
+   The PR branch file will contain `<<<<<<<` conflict markers.
 
-   Since the PR branch has conflict markers embedded in the file (it failed to merge), fetch the file from the PR branch to see the markers, and the base version for reference.
-
-3. Resolve conflicts: in dependency files (go.mod, go.sum, package-lock.json, Gemfile.lock, etc.) the Dependabot version always wins. For other files use judgment. Produce clean resolved content with no conflict markers.
+3. Resolve conflicts: in dependency files (go.mod, go.sum, package-lock.json, Gemfile.lock, etc.) the Dependabot version always wins. For other files: prefer the PR branch (Dependabot) version for dependency-related lines; if a conflict cannot be resolved without understanding business logic, treat this file as unresolvable and go to Step 4d with a clear diagnosis. Produce clean resolved content with no conflict markers.
 
 4. Get the current HEAD SHA of the PR branch:
    ```
-   gh api /repos/{repo}/git/ref/heads/{pr_branch}
+   get_pr_head_sha(host, token, repo, pr_number)
    ```
-   Extract `.object.sha`.
 
 5. Commit the resolved files:
    ```
@@ -106,15 +109,14 @@ For each entry in the index that matches the current problem type (`merge-confli
 ### Step 4c: Fix failing CI (if `ci_status == "failing"`)
 
 1. For each entry in `failing_checks`:
+   First, get the check run IDs for the current HEAD SHA:
    ```
-   get_check_logs(host, token, repo, check_run_id=<check id>)
+   get_check_run_ids(host, token, repo, head_sha=<pr_head_sha>)
    ```
-
-   Note: `failing_checks` from `get_pr_details` contains `{name, state}`. To get the `check_run_id`, re-fetch check-runs for the PR HEAD SHA:
+   Match failing check names to their numeric `id`. Then call:
    ```
-   gh api /repos/{repo}/commits/{head_sha}/check-runs
+   get_check_logs(host, token, repo, check_run_id=<id>)
    ```
-   Match by name to get the numeric `id` for each failing check.
 
 2. Read each log file using the `Read` tool (the full path returned by `get_check_logs`).
 
@@ -125,14 +127,17 @@ For each entry in the index that matches the current problem type (`merge-confli
    - Test hardcoded an old version string → update assertion
    - Lint: unused import, formatting → fix the specific line
 
-4. Fetch the relevant source files via:
+4. Fetch the relevant source files:
    ```
-   gh api /repos/{repo}/contents/{path}?ref={pr_branch}
+   get_file_contents(host, token, repo, path=<path>, ref=<pr_branch>)
    ```
 
 5. Apply the fix — modify file content to resolve the identified issue.
 
-6. Get the current HEAD SHA of the PR branch (re-fetch after any previous commit_files call).
+6. Get the current HEAD SHA of the PR branch (re-fetch after any previous commit_files call):
+   ```
+   get_pr_head_sha(host, token, repo, pr_number)
+   ```
 
 7. Commit:
    ```
@@ -230,19 +235,19 @@ package_managers: [<go-modules|npm|pip|...>]
 PR: {repo}#{pr_number} — bumped {library} {old_version} → {new_version}
 ```
 
-Then append one line to `~/.claude/dependabot-fix-knowledge/index.md`:
-
-```
-- [{NNN} {title}](entries/{filename}) — {problem_type}: {trigger_pattern}
-```
-
-If `index.md` does not exist yet, create it with header:
+If `index.md` does not exist yet, create it first with this header:
 
 ```markdown
 # dependabot-fix knowledge base
 
 Accumulated fix patterns. Read this index before fixing any ACTION REQUIRED PR.
 
+```
+
+Then append one line to `~/.claude/dependabot-fix-knowledge/index.md`:
+
+```
+- [{NNN} {title}](entries/{filename}) — {problem_type}: {trigger_pattern}
 ```
 
 ---
