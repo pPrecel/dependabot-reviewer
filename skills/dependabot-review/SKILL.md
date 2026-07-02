@@ -61,9 +61,12 @@ Use the returned data to determine **Path A** or **Path B**.
 
 ## Path A: Already-Handled PR
 
-Check `ci_status` from `get_pr_details`:
-- `ci_status == "failing"` → call `post_action_required_comment` (reason: `"failing-ci"`), set status `ACTION REQUIRED`
-- Otherwise → call `prepare_merge`. If result is `"needs_manual_rebase"` → set status `ACTION REQUIRED` with message. If `"done"` → set status `UPDATED` if `branch_updated` else `APPROVED`.
+Check `merge_state` from `get_pr_details` first:
+- `merge_state == "behind"` → call `prepare_merge` immediately (do not check CI first). If result is `"needs_manual_rebase"` → set status `ACTION REQUIRED` with message. If `"done"` → set status `UPDATED`.
+- `merge_state == "dirty"` → set status `ACTION REQUIRED` (merge conflict, cannot update branch).
+- Otherwise → check `ci_status`:
+  - `ci_status == "failing"` → call `post_action_required_comment` (reason: `"failing-ci"`), set status `ACTION REQUIRED`
+  - Otherwise → call `prepare_merge`. If result is `"needs_manual_rebase"` → set status `ACTION REQUIRED` with message. If `"done"` → set status `UPDATED` if `branch_updated` else `APPROVED`.
 
 ---
 
@@ -77,9 +80,11 @@ Use `diff_classification` from `get_pr_details`:
 - `type == "manifest"` + `semver == "minor"` → fetch changelog
 - `type == "manifest"` + `semver == "major"` → fetch changelog, likely ACTION REQUIRED
 
-### Step B2: Check CI
+### Step B2: Check merge_state and CI
 
-- `ci_status == "failing"` → ACTION REQUIRED (even if diff is safe)
+- `merge_state == "behind"` → call `prepare_merge` immediately (do not check CI or changelog). If result is `"needs_manual_rebase"` → ACTION REQUIRED. If `"done"` → status `UPDATED`, stop.
+- `merge_state == "dirty"` → ACTION REQUIRED (merge conflict).
+- `ci_status == "failing"` → ACTION REQUIRED (even if diff is safe).
 
 ### Step B3: Read changelog (from PR details)
 
