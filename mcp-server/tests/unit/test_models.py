@@ -1,6 +1,6 @@
 from dependabot_mcp.models import (
     PRSummary, Review, DiffClassification,
-    PRDetails, Changelog, PrepareMergeResult, CommentResult,
+    PRDetails, PrepareMergeResult, CommentResult,
 )
 
 
@@ -27,9 +27,11 @@ def test_pr_details_fields():
             library="foo", old_version="1.0.0", new_version="1.0.1",
         ),
         comments=[],
+        changelog_excerpt="v1.0.1\n- fix: something",
     )
     assert details.ci_status == "passing"
     assert details.auto_merge_set is True
+    assert details.changelog_excerpt == "v1.0.1\n- fix: something"
 
 
 def test_prepare_merge_result_defaults():
@@ -44,11 +46,6 @@ def test_prepare_merge_result_defaults():
     )
     assert result.status == "done"
     assert result.envs_approved == 2
-
-
-def test_changelog_not_found():
-    c = Changelog(found=False, excerpt="", source="not-found")
-    assert c.found is False
 
 
 def test_comment_result():

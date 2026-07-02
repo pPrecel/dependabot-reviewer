@@ -41,12 +41,7 @@ class PRDetails(BaseModel):
     merge_state: str
     diff_classification: DiffClassification
     comments: list[Comment]
-
-
-class Changelog(BaseModel):
-    found: bool
-    excerpt: str
-    source: Literal["github-release", "changelog-file", "not-found"]
+    changelog_excerpt: str
 
 
 class PrepareMergeResult(BaseModel):
