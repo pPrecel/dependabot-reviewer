@@ -48,9 +48,11 @@ async def list_dependabot_prs(host: str, token: str) -> list[dict]:
         f"is:open is:pr author:{author} reviewed-by:@me"
         for author in _BOT_AUTHORS
     ]
-    results = await asyncio.gather(*[client.search_prs(q) for q in queries])
+    results = await asyncio.gather(*[client.search_prs(q) for q in queries], return_exceptions=True)
     merged = []
     for items in results:
+        if isinstance(items, Exception):
+            continue
         for item in items:
             repo = _repo_from_url(item.get("repository_url", ""))
             merged.append({
