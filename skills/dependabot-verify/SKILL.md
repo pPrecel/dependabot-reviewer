@@ -11,65 +11,74 @@ description: >
 
 You are executing the Dependabot PR verification workflow. Work autonomously — do not ask the user for input. Process all PRs and present results at the end. **Take no write actions.**
 
+All GitHub I/O is performed through the `dependabot-reviewer` MCP server tools. If the MCP server is not present in the session or returns an error, stop and report the error — do not fall back to `gh` CLI or `curl`.
+
 ---
 
 ## Workflow
 
-### Step 1: Detect tooling
+### Step 1: Acquire tokens
 
-Detect which GitHub API tool is available. Use the first option that works. No write access is required.
+```bash
+TOKEN_GH=$(gh auth token)
+TOKEN_SAP=$(GH_HOST=github.tools.sap gh auth token 2>/dev/null || echo "")
+```
 
-**Detection order:**
+If `TOKEN_SAP` is empty, skip `github.tools.sap` processing and note it in the summary.
 
-1. **Read-only MCP tools** — prefer `mcp__github-ro__*` or `mcp__github-tools-ro__*` if present in the session. These are sufficient for all read operations in this workflow.
-2. **Read-write MCP tools** — use if read-only MCP tools are absent (they also support read operations).
-3. **`gh` CLI** — run `gh auth status` to confirm login. For `github.tools.sap` use `GH_HOST=github.tools.sap gh auth status`.
-4. **`curl`** — last resort. Use `GITHUB_TOKEN` or `GH_TOKEN` env vars. For `github.tools.sap` use base URL `https://github.tools.sap/api/v3`.
-
-Use only one tool for all subsequent GitHub API calls in this workflow. Never mix tools.
+---
 
 ### Step 2: Discover PRs
 
-Fetch all open Dependabot PRs using the queries described in the `dependabot-reviewer` agent's "Finding Dependabot PRs" section. For `github.com` this includes all PRs in the `kyma-project` org plus PRs where you are a requested reviewer or have already reviewed. For `github.tools.sap` this includes PRs where you are a requested reviewer or have already reviewed.
+For each host that has a token, call:
 
-Collect results into two lists (one per host), deduplicated by PR number. If a host returns an error or no results, note it and continue.
+```
+list_dependabot_prs(host="github.com", token=TOKEN_GH)
+list_dependabot_prs(host="github.tools.sap", token=TOKEN_SAP)   # if token available
+```
+
+For `github.com`, also fetch all Dependabot PRs in the `kyma-project` org. The `list_dependabot_prs` tool does not cover the org-wide query — run it via `gh` CLI and merge results:
+
+```bash
+gh search prs --author app/dependabot --owner kyma-project --state open \
+  --json number,title,url,repository --limit 100
+```
+
+Collect results into two lists (one per host), deduplicated by PR number. If a host returns an error, record the error and continue with the other host.
+
+---
 
 ### Step 3: Classify each PR
 
-For each PR, fetch the following data (read-only):
+For each PR call:
 
-**Via `gh` CLI:**
-```bash
-gh pr view <number> --repo <owner/repo> \
-  --json reviews,statusCheckRollup,autoMergeRequest,mergeStateStatus,comments
+```
+get_pr_details(host, token, repo=pr.repo, pr_number=pr.number)
 ```
 
-**Via MCP tools:** Use `pull_request_read` with methods `get_reviews`, `get_check_runs`, `get_status`, `get`, `get_comments` separately as needed. Use `get_check_runs` as the primary method for individual CI check states; `get_status` provides the combined commit status as a fallback.
+The returned `PRDetails` contains all fields needed for classification:
+- `reviews` — list of `{author, state}` (check for `state == "APPROVED"` from current user)
+- `auto_merge_set` — boolean
+- `ci_status` — `"passing"` | `"failing"` | `"pending"`
+- `failing_checks` — list of `{name, state}`
+- `merge_state` — `"clean"` | `"behind"` | `"dirty"` | `"unknown"`
+- `comments` — list of `{author, body, created_at}`
 
-For each check in `statusCheckRollup` that has `state == WAITING`, also fetch pending deployments:
-```bash
-gh api /repos/<owner/repo>/actions/runs/<run_id>/pending_deployments
-```
-
-Note: Pending deployment detection requires `gh` CLI or `curl` — there is no MCP equivalent. If using MCP tools exclusively, skip the `WAITING FOR ENV` classification and record the check as `⏳ WAITING FOR CI` instead.
+Note: `get_pr_details` does not detect pending environment deployments. The `🔐 WAITING FOR ENV` status is not available on the MCP server path — skip it.
 
 **Classification priority (first matching condition wins):**
 
 | Priority | Status | Condition |
 |----------|--------|-----------|
-| 1 | ⚠️ `ACTION REQUIRED` | Any CI check has `state == FAILURE` or `state == ERROR`, OR any PR comment contains the text "requires manual action ⚠️" |
-| 2 | 🔐 `WAITING FOR ENV` | At least one check has `state == WAITING` AND fetching its pending deployments returns a non-empty list |
-| 3 | 🔄 `NEEDS BRANCH UPDATE` | `mergeStateStatus == "BEHIND"` |
-| 4 | ⏳ `WAITING FOR CI` | No FAILURE/ERROR checks, not BEHIND, but at least one check has `state == PENDING` or `state == IN_PROGRESS` |
-| 5 | 👀 `NEEDS REVIEW` | Current user has no `APPROVED` review AND no PR comment contains "Dependabot PR reviewed ✅" or "requires manual action ⚠️" |
-| 6 | ✅ `READY` | Current user has an `APPROVED` review, `autoMergeRequest != null`, all CI checks are `SUCCESS`, and `mergeStateStatus != "BEHIND"` |
-| 7 | 👀 `NEEDS REVIEW` | Catch-all: any PR that does not match any condition above |
-
-**Note on comment detection (Priority 1 and 5):** Comments to check are PR-level comments and review comments. On the `gh` CLI path, these are included in `--json comments`. On the MCP path, fetch them via `get_comments` method on `pull_request_read`. Look for comments whose body contains exactly "requires manual action ⚠️" (Priority 1) or "Dependabot PR reviewed ✅" (Priority 5).
+| 1 | ⚠️ `ACTION REQUIRED` | `ci_status == "failing"`, OR any comment body contains `"requires manual action ⚠️"` |
+| 2 | 🔄 `NEEDS BRANCH UPDATE` | `merge_state == "behind"` |
+| 3 | ⏳ `WAITING FOR CI` | `ci_status == "pending"` |
+| 4 | 👀 `NEEDS REVIEW` | No `APPROVED` review from current user AND no comment contains `"Dependabot PR reviewed ✅"` or `"requires manual action ⚠️"` |
+| 5 | ✅ `READY` | `APPROVED` review from current user, `auto_merge_set == true`, `ci_status == "passing"`, `merge_state != "behind"` |
+| 6 | 👀 `NEEDS REVIEW` | Catch-all |
 
 **Detail field per status:**
 - `⚠️ ACTION REQUIRED` → list failing check names, e.g. `CI: test-unit FAILURE`
-- `🔐 WAITING FOR ENV` → environment name from the pending deployment, e.g. `environment: production`
 - `🔄 NEEDS BRANCH UPDATE` → `branch is behind <base-branch-name>`
 - `⏳ WAITING FOR CI` → count of pending checks, e.g. `3 checks pending`
 - `👀 NEEDS REVIEW` → `no review yet`
@@ -77,6 +86,8 @@ Note: Pending deployment detection requires `gh` CLI or `curl` — there is no M
 - `👀 NEEDS REVIEW` (catch-all) → `needs attention`
 
 If fetching data for a PR fails, record status as `❌ ERROR` and detail as the error message. Continue to the next PR.
+
+---
 
 ### Step 4: Present summary tables
 
@@ -89,7 +100,6 @@ After all PRs are processed, display two tables — one for `github.com`, one fo
 | `org/repo` | [#123](https://github.com/org/repo/pull/123) | ✅ READY | — |
 | `org/repo` | [#456](https://github.com/org/repo/pull/456) | ⚠️ ACTION REQUIRED | CI: test-unit FAILURE |
 | `org/repo` | [#789](https://github.com/org/repo/pull/789) | ⏳ WAITING FOR CI | 3 checks pending |
-| `org/repo` | [#101](https://github.com/org/repo/pull/101) | 🔐 WAITING FOR ENV | environment: production |
 | `org/repo` | [#102](https://github.com/org/repo/pull/102) | 🔄 NEEDS BRANCH UPDATE | branch is behind main |
 | `org/repo` | [#103](https://github.com/org/repo/pull/103) | 👀 NEEDS REVIEW | no review yet |
 
@@ -103,7 +113,6 @@ If no PRs were found on either host, say so explicitly:
 **Status legend:**
 - `✅ READY` — approved, automerge set, all CI green, branch up to date
 - `⚠️ ACTION REQUIRED` — failing CI or prior analysis flagged manual action
-- `🔐 WAITING FOR ENV` — pending environment deployment requires your approval
 - `🔄 NEEDS BRANCH UPDATE` — branch is behind base, needs update before merge
 - `⏳ WAITING FOR CI` — checks still running, no action needed yet
 - `👀 NEEDS REVIEW` — PR has not been reviewed or analysed yet

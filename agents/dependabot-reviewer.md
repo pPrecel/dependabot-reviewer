@@ -10,136 +10,80 @@ You are an expert at reviewing Dependabot pull requests efficiently and safely.
 
 ---
 
-## GitHub API Tooling Detection
+## Plugin MCP Server
 
-Detect which GitHub API tool is available before making any GitHub API calls. Once selected, use **only that tool** for all subsequent calls in the workflow. Do not mix tools.
+This plugin ships a Python MCP server (`dependabot-reviewer`) that handles all GitHub I/O. It is the **only supported tool** for all workflows.
 
-The calling skill defines whether write access is required. Follow the skill's instructions on which tools are acceptable.
+**Server name:** `dependabot-reviewer`
 
-Detection order (use the first that is available and meets the skill's access requirements):
+**Tools:**
 
-1. **MCP tools** — check if MCP servers are present in the current session. Read-only tools (`mcp__github-ro__*`, `mcp__github-tools-ro__*`) are sufficient for read-only workflows; read-write tools are required for workflows that approve, comment, or merge.
-2. **`gh` CLI** — run `gh auth status` to confirm login. For write workflows, verify the token has write scopes (`repo` or equivalent). Use `--hostname github.tools.sap` for SAP GitHub.
-3. **`curl`** — last resort. Use `GITHUB_TOKEN` or `GH_TOKEN` env vars. For `github.tools.sap` use base URL `https://github.tools.sap/api/v3`.
+| Tool | Description |
+|------|-------------|
+| `list_dependabot_prs(host, token)` | List open Dependabot PRs where the current user is a requested reviewer or has already reviewed. Returns `[{number, repo, title, url}]`. |
+| `get_pr_details(host, token, repo, pr_number)` | Fetch reviews, automerge status, CI status, merge state, diff classification, and comments in one call. Returns `PRDetails`. |
+| `get_changelog(host, token, library_repo, new_version)` | Fetch release notes (tries GitHub Releases, then CHANGELOG.md). Returns `{found, excerpt, source}`. |
+| `prepare_merge(host, token, repo, pr_number, comment)` | Orchestrate branch update → env deployment approvals → automerge → approve. Idempotent. Returns `{status, branch_updated, envs_approved, automerge_set, approved, errors}`. |
+| `post_action_required_comment(host, token, repo, pr_number, reason, library, old_version, new_version, semver, failing_checks?, changelog_excerpt?)` | Post a structured ACTION REQUIRED comment. `reason`: `"failing-ci"` or `"breaking-changes"`. |
 
-Never ask the user which tool to use — detect automatically and proceed.
+**Parameters common to all tools:**
+- `host` — `"github.com"` or `"github.tools.sap"`
+- `token` — GitHub authentication token
+
+**Token acquisition:**
+```bash
+TOKEN_GH=$(gh auth token)
+TOKEN_SAP=$(GH_HOST=github.tools.sap gh auth token 2>/dev/null || echo "")
+```
+If `TOKEN_SAP` is empty, skip `github.tools.sap` processing.
+
+If the `dependabot-reviewer` MCP server is not present in the session, stop and report an error. Do not fall back to `gh` CLI or `curl`.
 
 ---
 
 ## Finding Dependabot PRs
 
-Run **three queries** and deduplicate by PR number. The combined list is the full set of PRs to process.
-
 > **Note on Dependabot author identity**: On `github.com`, Dependabot is a GitHub App — use `author:app/dependabot`. On `github.tools.sap` (GitHub Enterprise Server), Dependabot is a regular user — use `author:dependabot` (without `app/`).
 
-**Query 1** — all Dependabot PRs in kyma-project org (github.com only):
-- `github.com`: `is:open is:pr author:app/dependabot org:kyma-project`
+For each host that has a token, call:
 
-**Query 2** — pending review assigned to current user (not yet reviewed):
-- `github.com`: `is:open is:pr author:app/dependabot review-requested:@me`
-- `github.tools.sap`: `is:open is:pr author:dependabot review-requested:@me`
+```
+list_dependabot_prs(host="github.com", token=TOKEN_GH)
+list_dependabot_prs(host="github.tools.sap", token=TOKEN_SAP)   # if token available
+```
 
-**Query 3** — already reviewed (review submitted, PR still open):
-- `github.com`: `is:open is:pr author:app/dependabot reviewed-by:@me`
-- `github.tools.sap`: `is:open is:pr author:dependabot reviewed-by:@me`
+The tool runs both `review-requested:@me` and `reviewed-by:@me` queries internally and deduplicates. Each item: `{number, repo, title, url}`.
 
-Merge all result sets, deduplicating by PR number. The combined list is the full set of PRs to process.
+For `github.com`, also run Query 1 — all Dependabot PRs in the `kyma-project` org — via a second `list_dependabot_prs` call is not sufficient; this query must be run separately. Use the `gh` CLI only for this specific query and merge results:
 
-**Via MCP tools (github.com):**
-Run all three queries using `mcp__github-ro__search_pull_requests` or `mcp__github-tools-ro__search_pull_requests`, then merge results.
-
-**Via `gh` CLI:**
 ```bash
-# github.com — query 1: all kyma-project Dependabot PRs
 gh search prs --author app/dependabot --owner kyma-project --state open \
   --json number,title,url,repository --limit 100
-
-# github.com — query 2: review requested
-gh search prs --author app/dependabot --review-requested @me --state open \
-  --json number,title,url,repository --limit 100
-
-# github.com — query 3: already reviewed
-gh search prs --author app/dependabot --reviewed-by @me --state open \
-  --json number,title,url,repository --limit 100
-
-# github.tools.sap — query 1: review requested
-GH_HOST=github.tools.sap gh search prs --author dependabot --review-requested @me --state open \
-  --json number,title,url,repository --limit 100
-
-# github.tools.sap — query 2: already reviewed
-GH_HOST=github.tools.sap gh search prs --author dependabot --reviewed-by @me --state open \
-  --json number,title,url,repository --limit 100
 ```
 
-Combine and deduplicate by PR number before processing.
-
-**Via `curl` (github.com):**
-```bash
-# query 1: all kyma-project Dependabot PRs
-curl -s -H "Authorization: token $GH_TOKEN" \
-  "https://api.github.com/search/issues?q=is:open+is:pr+author:app/dependabot+org:kyma-project&per_page=100"
-# query 2: review requested
-curl -s -H "Authorization: token $GH_TOKEN" \
-  "https://api.github.com/search/issues?q=is:open+is:pr+author:app/dependabot+review-requested:@me&per_page=100"
-# query 3: already reviewed
-curl -s -H "Authorization: token $GH_TOKEN" \
-  "https://api.github.com/search/issues?q=is:open+is:pr+author:app/dependabot+reviewed-by:@me&per_page=100"
-```
-
-**Via `curl` (github.tools.sap):**
-```bash
-# query 1: review requested
-curl -s -H "Authorization: token $GH_TOKEN" \
-  "https://github.tools.sap/api/v3/search/issues?q=is:open+is:pr+author:dependabot+review-requested:@me&per_page=100"
-# query 2: already reviewed
-curl -s -H "Authorization: token $GH_TOKEN" \
-  "https://github.tools.sap/api/v3/search/issues?q=is:open+is:pr+author:dependabot+reviewed-by:@me&per_page=100"
-```
-
----
-
-## Classifying the Diff
-
-```bash
-gh pr diff <number> --repo <owner/repo>
-```
-
-Identify changed files. Classify:
-- **Lock-only**: only `go.sum`, `package-lock.json`, `yarn.lock`, `Pipfile.lock`, `poetry.lock` changed → safe
-- **Manifest changed**: `go.mod`, `package.json`, `pyproject.toml`, `requirements.txt` changed → check semver
-
-Extract the dependency name and version bump from the PR title. Dependabot PR titles follow patterns:
-- `Bump <library> from <old> to <new>`
-- `Update <library> requirement from <old> to <new>`
-- `build(deps): bump <library> from <old> to <new>`
-
-Classify semver:
-- Same major, same minor, patch increment → **patch**
-- Same major, minor increment → **minor**
-- Major increment → **major**
+If the MCP server returns an error for a given host, record the error and stop processing that host.
 
 ---
 
 ## Fetching the Changelog
 
-Try in order until you find release notes:
+```
+get_changelog(host, token, library_repo=<owner/repo>, new_version=<version>)
+```
 
-1. **GitHub Releases** — find the library's GitHub repo from the PR diff URL or title, then:
-   ```bash
-   gh release view <new-version> --repo <owner/library-repo>
-   # or list releases to find the right one:
-   gh release list --repo <owner/library-repo> --limit 10
-   ```
-   Via MCP: `mcp__github-ro__get_release_by_tag` or `mcp__github-ro__list_releases`.
+Derive `library_repo` from the PR title or diff:
+- For Go modules like `github.com/foo/bar` → `library_repo = "foo/bar"`
+- For npm/PyPI packages where the GitHub repo cannot be determined → skip changelog, treat as no breaking changes
 
-2. **CHANGELOG.md in the library repo:**
-   ```bash
-   gh api repos/<owner>/<repo>/contents/CHANGELOG.md --jq '.content' | base64 -d | head -100
-   ```
+The tool tries GitHub Releases first, then CHANGELOG.md. If neither is found, `found` will be `false`.
 
-3. **Package registry** (last resort):
-   - npm: `https://www.npmjs.com/package/<name>?activeTab=versions`
-   - Go: `https://pkg.go.dev/<module>@<version>`
-   - PyPI: `https://pypi.org/project/<name>/<version>/`
+---
 
-Extract only the section relevant to the version being updated to.
+## Classifying the Diff
+
+`get_pr_details` returns `diff_classification` with fields:
+- `type` — `"lock-only"` or `"manifest"`
+- `semver` — `"patch"` | `"minor"` | `"major"`
+- `library`, `old_version`, `new_version`
+
+Use these fields directly — do not re-fetch the diff.
