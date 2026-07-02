@@ -2,7 +2,7 @@ import pytest
 import respx
 import httpx
 import base64
-from dependabot_mcp.server import get_check_logs, commit_files, post_pr_comment
+from dependabot_mcp.server import get_check_logs, commit_files, post_pr_comment, get_raw_diff, get_file_contents, get_pr_head_sha, get_check_run_ids
 
 
 @respx.mock
@@ -61,3 +61,76 @@ async def test_post_comment_returns_url():
     )
     result = await post_pr_comment(host="github.com", token="tok", repo="owner/repo", pr_number=42, body="Automatic fix applied ✅")
     assert "issuecomment" in result["comment_url"]
+
+
+@respx.mock
+async def test_get_raw_diff_returns_text():
+    respx.get("https://api.github.com/repos/owner/repo/pulls/42").mock(
+        return_value=httpx.Response(200, text="diff --git a/go.mod b/go.mod\n+github.com/foo/bar v2.0.0")
+    )
+    result = await get_raw_diff(host="github.com", token="tok", repo="owner/repo", pr_number=42)
+    assert "go.mod" in result
+
+
+@respx.mock
+async def test_get_file_contents_returns_decoded():
+    content = "module github.com/owner/repo\n\ngo 1.21\n"
+    encoded = base64.b64encode(content.encode()).decode()
+    respx.get("https://api.github.com/repos/owner/repo/contents/go.mod").mock(
+        return_value=httpx.Response(200, json={
+            "content": encoded + "\n",
+            "sha": "deadbeef",
+            "encoding": "base64",
+        })
+    )
+    result = await get_file_contents(host="github.com", token="tok", repo="owner/repo", path="go.mod", ref="main")
+    assert "go 1.21" in result["content"]
+    assert result["sha"] == "deadbeef"
+
+
+@respx.mock
+async def test_get_pr_head_sha_returns_sha():
+    respx.get("https://api.github.com/repos/owner/repo/pulls/42").mock(
+        return_value=httpx.Response(200, json={
+            "number": 42,
+            "head": {"sha": "abc123def456", "ref": "dependabot/go/foo-2.0.0"},
+            "base": {"ref": "main"},
+            "mergeable_state": "behind",
+        })
+    )
+    result = await get_pr_head_sha(host="github.com", token="tok", repo="owner/repo", pr_number=42)
+    assert result == "abc123def456"
+
+
+@respx.mock
+async def test_get_pr_head_sha_raises_on_missing_sha():
+    respx.get("https://api.github.com/repos/owner/repo/pulls/99").mock(
+        return_value=httpx.Response(200, json={
+            "number": 99,
+            "head": {},
+            "base": {"ref": "main"},
+            "mergeable_state": "unknown",
+        })
+    )
+    try:
+        await get_pr_head_sha(host="github.com", token="tok", repo="owner/repo", pr_number=99)
+        assert False, "Expected ValueError"
+    except ValueError as e:
+        assert "no head SHA" in str(e)
+
+
+@respx.mock
+async def test_get_check_run_ids_returns_list():
+    respx.get("https://api.github.com/repos/owner/repo/commits/abc123/check-runs").mock(
+        return_value=httpx.Response(200, json={
+            "check_runs": [
+                {"id": 111, "name": "test-unit", "conclusion": "failure", "status": "completed"},
+                {"id": 222, "name": "lint", "conclusion": "success", "status": "completed"},
+            ]
+        })
+    )
+    result = await get_check_run_ids(host="github.com", token="tok", repo="owner/repo", head_sha="abc123")
+    assert len(result) == 2
+    assert result[0]["id"] == 111
+    assert result[0]["name"] == "test-unit"
+    assert result[1]["conclusion"] == "success"
