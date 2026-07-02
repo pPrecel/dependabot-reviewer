@@ -10,13 +10,7 @@ from .models import (
 mcp = FastMCP("dependabot-reviewer")
 
 
-def _is_github_com(host: str) -> bool:
-    return host == "github.com"
-
-
-def _dependabot_author(host: str) -> str:
-    # On github.com Dependabot is a GitHub App; on GHES it's a regular user
-    return "app/dependabot" if _is_github_com(host) else "dependabot"
+_BOT_AUTHORS = ["app/dependabot", "app/ospo-renovate"]
 
 
 def _deduplicate(items: list[dict]) -> list[dict]:
@@ -47,22 +41,24 @@ async def list_dependabot_prs(host: str, token: str) -> list[dict]:
     Returns: list of {number, repo, title, url}
     """
     client = GithubClient(host, token)
-    author = _dependabot_author(host)
-    q1 = f"is:open is:pr author:{author} review-requested:@me"
-    q2 = f"is:open is:pr author:{author} reviewed-by:@me"
-    r1, r2 = await asyncio.gather(
-        client.search_prs(q1),
-        client.search_prs(q2),
-    )
+    queries = [
+        f"is:open is:pr author:{author} review-requested:@me"
+        for author in _BOT_AUTHORS
+    ] + [
+        f"is:open is:pr author:{author} reviewed-by:@me"
+        for author in _BOT_AUTHORS
+    ]
+    results = await asyncio.gather(*[client.search_prs(q) for q in queries])
     merged = []
-    for item in r1 + r2:
-        repo = _repo_from_url(item.get("repository_url", ""))
-        merged.append({
-            "number": item["number"],
-            "repo": repo,
-            "title": item["title"],
-            "url": item["html_url"],
-        })
+    for items in results:
+        for item in items:
+            repo = _repo_from_url(item.get("repository_url", ""))
+            merged.append({
+                "number": item["number"],
+                "repo": repo,
+                "title": item["title"],
+                "url": item["html_url"],
+            })
     return _deduplicate(merged)
 
 
@@ -204,6 +200,10 @@ async def prepare_merge(host: str, token: str, repo: str, pr_number: int, commen
         try:
             await client.update_branch(repo, pr_number)
             branch_updated = True
+            # Re-fetch PR to get the updated HEAD SHA after branch update,
+            # then wait for GitHub to start new workflow runs before approving envs.
+            await asyncio.sleep(10)
+            pr = await client.get_pr(repo, pr_number)
         except Exception as e:
             errors.append(f"update_branch failed: {e}")
 
