@@ -1,11 +1,11 @@
 # dependabot-reviewer
 
-A Claude Code plugin that reviews open Dependabot PRs where you are a requested reviewer, across both `github.com` and `github.tools.sap`.
+A Claude Code plugin that reviews open Dependabot PRs where you are a requested reviewer, across all GitHub hosts you are authenticated with via `gh`.
 
 ## Prerequisites
 
 - Claude Code with plugin support
-- `gh` CLI authenticated, or GitHub MCP tools configured in your Claude Code session
+- `gh` CLI authenticated to one or more GitHub hosts
 
 ## Installation
 
@@ -22,7 +22,7 @@ claude plugin install dependabot-reviewer@dependabot-reviewer
 
 ## How it works
 
-The skill fetches all open Dependabot PRs where you are a requested reviewer from both `github.com` and `github.tools.sap`. For each PR it:
+The skill fetches all open Dependabot PRs where you are a requested reviewer from all GitHub hosts you are authenticated with. For each PR it:
 
 - **approves** and enables automerge for safe updates (patch/minor bumps with passing CI and no breaking changes)
 - **updates the branch** if it's behind the base branch

@@ -68,6 +68,6 @@ Tests: `mcp-server/tests/`
 
 **Approval decision**: lock-only diffs and patch/minor bumps without breaking changelog entries are auto-approved. Major bumps or failing CI always require manual action. Decision table lives in `dependabot-review/SKILL.md`.
 
-**Two-host processing**: both skills always query `github.com` and `github.tools.sap` and present separate result tables per host.
+**Multi-host processing**: both skills discover all authenticated GitHub hosts via `gh auth status --show-token` and present separate result tables per host.
 
 **dependabot-verify is strictly read-only**: it must never approve, comment, set automerge, update branches, or approve environment deployments.
