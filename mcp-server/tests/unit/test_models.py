@@ -1,6 +1,7 @@
 from dependabot_mcp.models import (
     PRSummary, Review, DiffClassification,
     PRDetails, PrepareMergeResult, CommentResult,
+    CheckLog, CommitResult,
 )
 
 
@@ -51,3 +52,19 @@ def test_prepare_merge_result_defaults():
 def test_comment_result():
     r = CommentResult(comment_url="https://github.com/owner/repo/issues/1#issuecomment-123")
     assert "issuecomment" in r.comment_url
+
+
+def test_check_log_fields():
+    log = CheckLog(job_id=42, name="test-unit", file_path="/tmp/dependabot-fix-logs/owner-repo-42.txt")
+    assert log.job_id == 42
+    assert log.name == "test-unit"
+    assert log.file_path == "/tmp/dependabot-fix-logs/owner-repo-42.txt"
+
+
+def test_commit_result_fields():
+    result = CommitResult(
+        commit_sha="abc123def456",
+        commit_url="https://github.com/owner/repo/commit/abc123def456",
+    )
+    assert result.commit_sha == "abc123def456"
+    assert "commit" in result.commit_url

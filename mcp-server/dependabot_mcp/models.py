@@ -56,3 +56,14 @@ class PrepareMergeResult(BaseModel):
 
 class CommentResult(BaseModel):
     comment_url: str
+
+
+class CheckLog(BaseModel):
+    job_id: int
+    name: str
+    file_path: str
+
+
+class CommitResult(BaseModel):
+    commit_sha: str
+    commit_url: str
