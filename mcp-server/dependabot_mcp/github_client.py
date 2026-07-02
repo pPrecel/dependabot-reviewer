@@ -91,6 +91,11 @@ class GithubClient:
             f.write(log_text)
         return file_path
 
+    async def get_check_run(self, repo: str, check_run_id: int) -> dict:
+        r = await self._client.get(f"/repos/{repo}/check-runs/{check_run_id}")
+        r.raise_for_status()
+        return r.json()
+
     async def get_file_contents(self, repo: str, path: str, ref: str | None = None) -> dict:
         """Fetch a file's content and blob SHA from GitHub. Returns {content: str, sha: str}."""
         params = {}

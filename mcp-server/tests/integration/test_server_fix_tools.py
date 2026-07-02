@@ -2,7 +2,7 @@ import pytest
 import respx
 import httpx
 import base64
-from dependabot_mcp.server import get_check_logs, commit_files, post_comment
+from dependabot_mcp.server import get_check_logs, commit_files, post_pr_comment
 
 
 @respx.mock
@@ -59,5 +59,5 @@ async def test_post_comment_returns_url():
             "html_url": "https://github.com/owner/repo/issues/42#issuecomment-999"
         })
     )
-    result = await post_comment(host="github.com", token="tok", repo="owner/repo", pr_number=42, body="Automatic fix applied ✅")
+    result = await post_pr_comment(host="github.com", token="tok", repo="owner/repo", pr_number=42, body="Automatic fix applied ✅")
     assert "issuecomment" in result["comment_url"]

@@ -132,6 +132,20 @@ async def test_get_file_contents(gh):
 
 
 @respx.mock
+async def test_get_check_run(gh):
+    respx.get("https://api.github.com/repos/owner/repo/check-runs/555").mock(
+        return_value=httpx.Response(200, json={
+            "id": 555,
+            "name": "test-unit",
+            "details_url": "https://github.com/owner/repo/actions/runs/111/job/555",
+        })
+    )
+    result = await gh.get_check_run("owner/repo", 555)
+    assert result["name"] == "test-unit"
+    assert result["id"] == 555
+
+
+@respx.mock
 async def test_commit_files_graphql(gh):
     respx.post("https://api.github.com/graphql").mock(
         return_value=httpx.Response(200, json={

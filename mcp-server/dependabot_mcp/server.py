@@ -291,9 +291,7 @@ async def get_check_logs(host: str, token: str, repo: str, check_run_id: int) ->
     Writes logs to /tmp/dependabot-fix-logs/ and returns {job_id, name, file_path}.
     """
     client = GithubClient(host, token)
-    r = await client._client.get(f"/repos/{repo}/check-runs/{check_run_id}")
-    r.raise_for_status()
-    check_run = r.json()
+    check_run = await client.get_check_run(repo, check_run_id)
     name = check_run.get("name", str(check_run_id))
     details_url = check_run.get("details_url", "")
     # Extract job_id from details_url: .../actions/runs/{run_id}/job/{job_id}
@@ -337,7 +335,7 @@ async def commit_files(
 
 
 @mcp.tool()
-async def post_comment(host: str, token: str, repo: str, pr_number: int, body: str) -> dict:
+async def post_pr_comment(host: str, token: str, repo: str, pr_number: int, body: str) -> dict:
     """
     Post a plain-text comment on a PR/issue.
     Returns {comment_url}.
