@@ -67,3 +67,12 @@ class CheckLog(BaseModel):
 class CommitResult(BaseModel):
     commit_sha: str
     commit_url: str
+
+
+class BranchCiStatus(BaseModel):
+    sha: str
+    branch: str
+    ci_status: Literal["passing", "failing", "pending", "unknown"]
+    failing_checks: list[dict]   # [{name: str, conclusion: str}]
+    total_checks: int
+    passing_checks: int

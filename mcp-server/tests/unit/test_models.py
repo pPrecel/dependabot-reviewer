@@ -1,7 +1,7 @@
 from dependabot_mcp.models import (
     PRSummary, Review, DiffClassification,
     PRDetails, PrepareMergeResult, CommentResult,
-    CheckLog, CommitResult,
+    CheckLog, CommitResult, BranchCiStatus,
 )
 
 
@@ -68,3 +68,44 @@ def test_commit_result_fields():
     )
     assert result.commit_sha == "abc123def456"
     assert "commit" in result.commit_url
+
+
+def test_branch_ci_status_fields():
+    result = BranchCiStatus(
+        sha="abc123",
+        branch="main",
+        ci_status="failing",
+        failing_checks=[{"name": "build", "conclusion": "failure"}],
+        total_checks=3,
+        passing_checks=2,
+    )
+    assert result.sha == "abc123"
+    assert result.ci_status == "failing"
+    assert result.total_checks == 3
+    assert result.passing_checks == 2
+    assert result.failing_checks[0]["name"] == "build"
+
+
+def test_branch_ci_status_passing():
+    result = BranchCiStatus(
+        sha="def456",
+        branch="main",
+        ci_status="passing",
+        failing_checks=[],
+        total_checks=5,
+        passing_checks=5,
+    )
+    assert result.failing_checks == []
+    assert result.passing_checks == 5
+
+
+def test_branch_ci_status_unknown():
+    result = BranchCiStatus(
+        sha="",
+        branch="main",
+        ci_status="unknown",
+        failing_checks=[],
+        total_checks=0,
+        passing_checks=0,
+    )
+    assert result.ci_status == "unknown"
