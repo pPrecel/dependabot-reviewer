@@ -115,6 +115,12 @@ class GithubClient:
         r.raise_for_status()
         return r.json().get("check_runs", [])
 
+    async def get_branch_head_sha(self, repo: str, branch: str) -> str:
+        """Fetch HEAD commit SHA for a branch. Raises HTTPStatusError on 404."""
+        r = await self._client.get(f"/repos/{repo}/git/ref/heads/{branch}")
+        r.raise_for_status()
+        return r.json()["object"]["sha"]
+
     # ── Write ─────────────────────────────────────────────────────────────
 
     async def post_review(self, repo: str, number: int, body: str) -> dict:

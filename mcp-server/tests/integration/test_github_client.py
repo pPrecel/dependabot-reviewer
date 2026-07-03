@@ -168,3 +168,24 @@ async def test_commit_files_graphql(gh):
     )
     assert result["commit_sha"] == "def456abc789"
     assert "commit" in result["commit_url"]
+
+
+@respx.mock
+async def test_get_branch_head_sha(gh):
+    respx.get("https://api.github.com/repos/owner/repo/git/ref/heads/main").mock(
+        return_value=httpx.Response(200, json={
+            "ref": "refs/heads/main",
+            "object": {"sha": "deadbeef1234", "type": "commit"},
+        })
+    )
+    sha = await gh.get_branch_head_sha("owner/repo", "main")
+    assert sha == "deadbeef1234"
+
+
+@respx.mock
+async def test_get_branch_head_sha_not_found(gh):
+    respx.get("https://api.github.com/repos/owner/repo/git/ref/heads/nonexistent").mock(
+        return_value=httpx.Response(404, json={"message": "Not Found"})
+    )
+    with pytest.raises(httpx.HTTPStatusError):
+        await gh.get_branch_head_sha("owner/repo", "nonexistent")
