@@ -1,7 +1,7 @@
 import pytest
 import respx
 import httpx
-from dependabot_mcp.server import get_branch_ci_status
+from dependabot_mcp.server import get_branch_ci_status, list_recently_merged_dependabot_prs
 
 
 @respx.mock
@@ -86,3 +86,85 @@ async def test_get_branch_ci_status_unknown_no_checks():
     result = await get_branch_ci_status(host="github.com", token="tok", repo="owner/repo", branch="main")
     assert result["ci_status"] == "unknown"
     assert result["total_checks"] == 0
+
+
+@respx.mock
+async def test_list_recently_merged_dependabot_prs_github_com():
+    respx.get("https://api.github.com/search/issues").mock(
+        return_value=httpx.Response(200, json={
+            "items": [
+                {
+                    "number": 101,
+                    "repository_url": "https://api.github.com/repos/owner/repo",
+                    "title": "bump foo from 1.0.0 to 1.1.0",
+                    "html_url": "https://github.com/owner/repo/pull/101",
+                },
+                {
+                    "number": 102,
+                    "repository_url": "https://api.github.com/repos/owner/repo",
+                    "title": "bump bar from 2.0.0 to 2.0.1",
+                    "html_url": "https://github.com/owner/repo/pull/102",
+                },
+            ]
+        })
+    )
+    result = await list_recently_merged_dependabot_prs(
+        host="github.com", token="tok", since="2026-06-26"
+    )
+    assert len(result) == 2
+    assert result[0]["number"] == 101
+    assert result[0]["repo"] == "owner/repo"
+    assert result[1]["number"] == 102
+
+
+@respx.mock
+async def test_list_recently_merged_dependabot_prs_deduplicates():
+    # Same PR returned by multiple queries (e.g. reviewed-by + review-requested)
+    respx.get("https://api.github.com/search/issues").mock(
+        side_effect=[
+            httpx.Response(200, json={
+                "items": [
+                    {
+                        "number": 55,
+                        "repository_url": "https://api.github.com/repos/org/proj",
+                        "title": "bump lib",
+                        "html_url": "https://github.com/org/proj/pull/55",
+                    }
+                ]
+            }),
+            httpx.Response(200, json={
+                "items": [
+                    {
+                        "number": 55,
+                        "repository_url": "https://api.github.com/repos/org/proj",
+                        "title": "bump lib",
+                        "html_url": "https://github.com/org/proj/pull/55",
+                    }
+                ]
+            }),
+        ]
+    )
+    result = await list_recently_merged_dependabot_prs(
+        host="github.com", token="tok", since="2026-06-26"
+    )
+    assert len(result) == 1
+    assert result[0]["number"] == 55
+
+
+@respx.mock
+async def test_list_recently_merged_dependabot_prs_ghes_uses_plain_author():
+    """On GHES (non-github.com host), query should use author:dependabot, not author:app/dependabot."""
+    captured_queries = []
+
+    def capture(request):
+        captured_queries.append(request.url.params.get("q", ""))
+        return httpx.Response(200, json={"items": []})
+
+    respx.get("https://github.tools.sap/api/v3/search/issues").mock(side_effect=capture)
+
+    await list_recently_merged_dependabot_prs(
+        host="github.tools.sap", token="tok", since="2026-06-26"
+    )
+    # All queries should use author:dependabot (plain), not author:app/dependabot
+    assert all("author:app/" not in q for q in captured_queries)
+    assert any("author:dependabot" in q for q in captured_queries)

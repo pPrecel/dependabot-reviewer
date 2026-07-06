@@ -438,3 +438,37 @@ async def get_branch_ci_status(host: str, token: str, repo: str, branch: str) ->
         total_checks=len(checks),
         passing_checks=passing_count,
     ).model_dump()
+
+
+@mcp.tool()
+async def list_recently_merged_dependabot_prs(host: str, token: str, since: str) -> list[dict]:
+    """
+    List Dependabot PRs merged since `since` (ISO 8601 date, e.g. "2026-06-26")
+    where the authenticated user reviewed the PR.
+    Returns: list of {number, repo, title, url}
+    """
+    client = GithubClient(host, token)
+    # On github.com Dependabot is a GitHub App; on GHES it's a plain user
+    authors = (
+        ["app/dependabot", "app/ospo-renovate"]
+        if host == "github.com"
+        else ["dependabot", "ospo-renovate"]
+    )
+    queries = [
+        f"is:pr is:merged author:{author} merged:>={since} reviewed-by:@me"
+        for author in authors
+    ]
+    results = await asyncio.gather(*[client.search_prs(q) for q in queries], return_exceptions=True)
+    merged = []
+    for items in results:
+        if isinstance(items, Exception):
+            continue
+        for item in items:
+            repo = _repo_from_url(item.get("repository_url", ""))
+            merged.append({
+                "number": item["number"],
+                "repo": repo,
+                "title": item["title"],
+                "url": item["html_url"],
+            })
+    return _deduplicate(merged)
