@@ -15,6 +15,7 @@ class Review(BaseModel):
 
 
 class CheckResult(BaseModel):
+    id: int
     name: str
     state: str      # "SUCCESS" | "FAILURE" | "ERROR" | "PENDING" | "WAITING"
 

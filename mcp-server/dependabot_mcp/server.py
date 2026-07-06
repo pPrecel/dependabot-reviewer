@@ -1,6 +1,6 @@
 import asyncio
 from mcp.server.fastmcp import FastMCP
-from .github_client import GithubClient
+from .github_client import get_client
 from .classifier import classify_diff
 from .body_parser import extract_changelog
 from .models import (
@@ -42,13 +42,11 @@ async def list_dependabot_prs(host: str, token: str) -> list[dict]:
     is a requested reviewer or has already reviewed.
     Returns: list of {number, repo, title, url}
     """
-    client = GithubClient(host, token)
+    client = get_client(host, token)
+    authors = " OR ".join(f"author:{a}" for a in _BOT_AUTHORS)
     queries = [
-        f"is:open is:pr author:{author} review-requested:@me"
-        for author in _BOT_AUTHORS
-    ] + [
-        f"is:open is:pr author:{author} reviewed-by:@me"
-        for author in _BOT_AUTHORS
+        f"is:open is:pr {authors} review-requested:@me",
+        f"is:open is:pr {authors} reviewed-by:@me",
     ]
     results = await asyncio.gather(*[client.search_prs(q) for q in queries], return_exceptions=True)
     merged = []
@@ -73,7 +71,7 @@ async def get_pr_details(host: str, token: str, repo: str, pr_number: int) -> di
     reviews, automerge status, CI status, merge state, diff classification, comments.
     Makes 4 parallel API calls for speed.
     """
-    client = GithubClient(host, token)
+    client = get_client(host, token)
 
     pr, reviews_raw, comments_raw, diff = await asyncio.gather(
         client.get_pr(repo, pr_number),
@@ -96,7 +94,7 @@ async def get_pr_details(host: str, token: str, repo: str, pr_number: int) -> di
     auto_merge_set = pr.get("auto_merge") is not None
 
     failing = [
-        CheckResult(name=c["name"], state=c["conclusion"] or c["status"])
+        CheckResult(id=c["id"], name=c["name"], state=c["conclusion"] or c["status"])
         for c in checks_raw
         if c.get("conclusion") in ("failure", "error")
            or c.get("status") in ("failure", "error")
@@ -141,7 +139,7 @@ async def prepare_merge(host: str, token: str, repo: str, pr_number: int, commen
     Returns status "done" or "needs_manual_rebase".
     Idempotent: skips automerge and approve if already set.
     """
-    client = GithubClient(host, token)
+    client = get_client(host, token)
     errors: list[str] = []
     branch_updated = False
     envs_approved = 0
@@ -213,31 +211,36 @@ async def prepare_merge(host: str, token: str, repo: str, pr_number: int, commen
         except Exception as e:
             errors.append(f"env approval for run {run_id} failed: {e}")
 
-    # ── Step 3: automerge ────────────────────────────────────────────────
-    if pr.get("auto_merge") is None:
-        try:
-            await client.enable_automerge(repo, pr_number)
-            automerge_set = True
-        except Exception as e:
-            errors.append(f"enable_automerge failed: {e}")
-    # else: already set — skip
-
-    # ── Step 4: approve ──────────────────────────────────────────────────
-    reviews = await client.get_pr_reviews(repo, pr_number)
-    # Determine current user login from token
-    me_r = await client._client.get("/user")
+    # ── Steps 3+4: automerge + approve (parallel) ────────────────────────
+    reviews, me_r = await asyncio.gather(
+        client.get_pr_reviews(repo, pr_number),
+        client._client.get("/user"),
+    )
     me_login = me_r.json().get("login", "") if me_r.status_code == 200 else ""
-
     already_approved = any(
         r.get("state") == "APPROVED" and r.get("user", {}).get("login") == me_login
         for r in reviews
     )
-    if not already_approved:
-        try:
-            await client.post_review(repo, pr_number, comment)
-            approved = True
-        except Exception as e:
-            errors.append(f"post_review failed: {e}")
+
+    async def _maybe_automerge() -> None:
+        nonlocal automerge_set
+        if pr.get("auto_merge") is None:
+            try:
+                await client.enable_automerge(pr["node_id"])
+                automerge_set = True
+            except Exception as e:
+                errors.append(f"enable_automerge failed: {e}")
+
+    async def _maybe_approve() -> None:
+        nonlocal approved
+        if not already_approved:
+            try:
+                await client.post_review(repo, pr_number, comment)
+                approved = True
+            except Exception as e:
+                errors.append(f"post_review failed: {e}")
+
+    await asyncio.gather(_maybe_automerge(), _maybe_approve())
 
     return PrepareMergeResult(
         status="done",
@@ -278,7 +281,7 @@ async def post_action_required_comment(
         semver=semver,
         changelog_excerpt=changelog_excerpt,
     )
-    client = GithubClient(host, token)
+    client = get_client(host, token)
     result = await client.post_comment(repo, pr_number, body)
     return CommentResult(comment_url=result["html_url"]).model_dump()
 
@@ -290,7 +293,7 @@ async def get_check_logs(host: str, token: str, repo: str, check_run_id: int) ->
     Maps check_run_id → job_id via check-run details_url, then downloads logs.
     Writes logs to /tmp/dependabot-fix-logs/ and returns {job_id, name, file_path}.
     """
-    client = GithubClient(host, token)
+    client = get_client(host, token)
     check_run = await client.get_check_run(repo, check_run_id)
     name = check_run.get("name", str(check_run_id))
     details_url = check_run.get("details_url", "")
@@ -323,7 +326,7 @@ async def commit_files(
     Include [dependabot skip] in message to prevent Dependabot from force-pushing over the fix.
     Returns {commit_sha, commit_url}.
     """
-    client = GithubClient(host, token)
+    client = get_client(host, token)
     result = await client.commit_files_graphql(
         repo=repo,
         branch=branch,
@@ -340,7 +343,7 @@ async def post_pr_comment(host: str, token: str, repo: str, pr_number: int, body
     Post a plain-text comment on a PR/issue.
     Returns {comment_url}.
     """
-    client = GithubClient(host, token)
+    client = get_client(host, token)
     result = await client.post_comment(repo, pr_number, body)
     return CommentResult(comment_url=result["html_url"]).model_dump()
 
@@ -351,7 +354,7 @@ async def get_raw_diff(host: str, token: str, repo: str, pr_number: int) -> str:
     Fetch the raw unified diff of a pull request.
     Returns the diff as plain text. Use to find conflict markers (<<<<<<<).
     """
-    client = GithubClient(host, token)
+    client = get_client(host, token)
     return await client.get_pr_diff(repo, pr_number)
 
 
@@ -362,7 +365,7 @@ async def get_file_contents(host: str, token: str, repo: str, path: str, ref: st
     ref: branch name, tag, or commit SHA (optional, defaults to default branch).
     Returns {content: str, sha: str} where content is decoded plain text.
     """
-    client = GithubClient(host, token)
+    client = get_client(host, token)
     return await client.get_file_contents(repo, path, ref=ref)
 
 
@@ -372,26 +375,12 @@ async def get_pr_head_sha(host: str, token: str, repo: str, pr_number: int) -> s
     Get the current HEAD SHA of a pull request branch.
     Returns the SHA string. Re-fetch this after each commit_files call.
     """
-    client = GithubClient(host, token)
+    client = get_client(host, token)
     pr = await client.get_pr(repo, pr_number)
     head = pr.get("head")
     if not head or not head.get("sha"):
         raise ValueError(f"PR {pr_number} in {repo} has no head SHA (PR may be closed or from a deleted fork)")
     return head["sha"]
-
-
-@mcp.tool()
-async def get_check_run_ids(host: str, token: str, repo: str, head_sha: str) -> list[dict]:
-    """
-    List all check runs for a commit SHA.
-    Returns list of {id, name, conclusion, status} for use with get_check_logs.
-    """
-    client = GithubClient(host, token)
-    checks = await client.list_check_runs(repo, head_sha)
-    return [
-        {"id": c["id"], "name": c["name"], "conclusion": c.get("conclusion"), "status": c.get("status")}
-        for c in checks
-    ]
 
 
 @mcp.tool()
@@ -402,7 +391,7 @@ async def get_branch_ci_status(host: str, token: str, repo: str, branch: str) ->
     ci_status: "passing" | "failing" | "pending" | "unknown"
     Raises HTTPStatusError if the branch does not exist (e.g. 404).
     """
-    client = GithubClient(host, token)
+    client = get_client(host, token)
     sha = await client.get_branch_head_sha(repo, branch)
     checks = await client.list_check_runs(repo, sha)
 
@@ -447,18 +436,18 @@ async def list_recently_merged_dependabot_prs(host: str, token: str, since: str)
     where the authenticated user reviewed the PR.
     Returns: list of {number, repo, title, url}
     """
-    client = GithubClient(host, token)
+    client = get_client(host, token)
     # On github.com Dependabot is a GitHub App; on GHES it's a plain user
-    authors = (
+    bot_authors = (
         ["app/dependabot", "app/ospo-renovate"]
         if host == "github.com"
         else ["dependabot", "ospo-renovate"]
     )
-    queries = [
-        f"is:pr is:merged author:{author} merged:>={since} reviewed-by:@me"
-        for author in authors
-    ]
-    results = await asyncio.gather(*[client.search_prs(q) for q in queries], return_exceptions=True)
+    authors = " OR ".join(f"author:{a}" for a in bot_authors)
+    results = await asyncio.gather(
+        client.search_prs(f"is:pr is:merged {authors} merged:>={since} reviewed-by:@me"),
+        return_exceptions=True,
+    )
     merged = []
     for items in results:
         if isinstance(items, Exception):

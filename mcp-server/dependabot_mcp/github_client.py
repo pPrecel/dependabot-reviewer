@@ -5,6 +5,16 @@ import re
 import httpx
 
 
+_client_cache: dict[tuple[str, str], "GithubClient"] = {}
+
+
+def get_client(host: str, token: str) -> "GithubClient":
+    key = (host, token)
+    if key not in _client_cache:
+        _client_cache[key] = GithubClient(host, token)
+    return _client_cache[key]
+
+
 class GithubClient:
     def __init__(self, host: str, token: str) -> None:
         if host == "github.com":
@@ -139,11 +149,8 @@ class GithubClient:
         r.raise_for_status()
         return r.json()
 
-    async def enable_automerge(self, repo: str, number: int) -> dict:
+    async def enable_automerge(self, node_id: str) -> dict:
         # GitHub GraphQL: enablePullRequestAutoMerge
-        # First get the PR node_id
-        pr = await self.get_pr(repo, number)
-        node_id = pr["node_id"]
         query = """
         mutation($pullRequestId: ID!, $mergeMethod: PullRequestMergeMethod!) {
           enablePullRequestAutoMerge(input: {
