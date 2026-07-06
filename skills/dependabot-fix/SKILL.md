@@ -60,7 +60,18 @@ Store `{host, token, target_type, repo, pr_number_or_branch}` for use in all sub
 
 ---
 
-## Step 2: Discover PRs
+## Step 2: Load knowledge base
+
+Read `~/.claude/dependabot-fix-knowledge/index.md`.
+
+If the file does not exist, proceed without — no error.
+
+For each entry listed in the index, read the full entry file. Keep all entries in memory
+for use during analysis and fix planning in Steps 3 and 4.
+
+---
+
+## Step 3: Discover PRs
 
 For each host:
 
@@ -70,7 +81,7 @@ list_dependabot_prs(host=<host>, token=<token>)
 
 ---
 
-## Step 3: Filter ACTION REQUIRED PRs
+## Step 4: Filter ACTION REQUIRED PRs
 
 For each PR call:
 
@@ -84,11 +95,11 @@ If no ACTION REQUIRED PRs found for a host → skip and note in summary.
 
 ---
 
-## Step 4: Fix pipeline (per PR)
+## Step 5: Fix pipeline (per PR)
 
 Process PRs sequentially. For each ACTION REQUIRED PR:
 
-### Step 4a: Detect problem type + consult knowledge base
+### Step 5a: Detect problem type + consult knowledge base
 
 From `get_pr_details` result, determine which problems are present:
 - `merge_state == "dirty"` → merge conflict
@@ -104,7 +115,7 @@ For each entry in the index that matches the current problem type (`merge-confli
 
 ---
 
-### Step 4b: Fix merge conflict (if `merge_state == "dirty"`)
+### Step 5b: Fix merge conflict (if `merge_state == "dirty"`)
 
 1. Call `get_raw_diff(host, token, repo, pr_number)` to get the raw diff text. Identify files containing `<<<<<<<` conflict markers.
 
@@ -118,7 +129,7 @@ For each entry in the index that matches the current problem type (`merge-confli
    ```
    The PR branch file will contain `<<<<<<<` conflict markers.
 
-3. Resolve conflicts: in dependency files (go.mod, go.sum, package-lock.json, Gemfile.lock, etc.) the Dependabot version always wins. For other files: prefer the PR branch (Dependabot) version for dependency-related lines; if a conflict cannot be resolved without understanding business logic, treat this file as unresolvable and go to Step 4d with a clear diagnosis. Produce clean resolved content with no conflict markers.
+3. Resolve conflicts: in dependency files (go.mod, go.sum, package-lock.json, Gemfile.lock, etc.) the Dependabot version always wins. For other files: prefer the PR branch (Dependabot) version for dependency-related lines; if a conflict cannot be resolved without understanding business logic, treat this file as unresolvable and go to Step 5d with a clear diagnosis. Produce clean resolved content with no conflict markers.
 
 4. Get the current HEAD SHA of the PR branch:
    ```
@@ -136,12 +147,12 @@ For each entry in the index that matches the current problem type (`merge-confli
    )
    ```
 
-6. On success → record `conflict_fixed = true`, continue to Step 4c if CI also failing.
-7. On failure (cannot determine correct resolution) → go to Step 4d, skip Step 4c.
+6. On success → record `conflict_fixed = true`, continue to Step 5c if CI also failing.
+7. On failure (cannot determine correct resolution) → go to Step 5d, skip Step 5c.
 
 ---
 
-### Step 4c: Fix failing CI (if `ci_status == "failing"`)
+### Step 5c: Fix failing CI (if `ci_status == "failing"`)
 
 1. For each entry in `failing_checks`:
    First, get the check run IDs for the current HEAD SHA:
@@ -185,12 +196,12 @@ For each entry in the index that matches the current problem type (`merge-confli
    )
    ```
 
-8. On success → record `ci_fixed = true`, proceed to Step 4e.
-9. On failure (cannot identify cause or apply fix) → go to Step 4d.
+8. On success → record `ci_fixed = true`, proceed to Step 5e.
+9. On failure (cannot identify cause or apply fix) → go to Step 5d.
 
 ---
 
-### Step 4d: Diagnostic comment (fallback)
+### Step 5d: Diagnostic comment (fallback)
 
 When automatic fix is not possible:
 
@@ -215,7 +226,7 @@ Set PR result to `⚠️ NEEDS MANUAL ACTION`.
 
 ---
 
-### Step 4e: Success comment + knowledge base update
+### Step 5e: Success comment + knowledge base update
 
 Post success comment:
 
@@ -287,7 +298,7 @@ Then append one line to `~/.claude/dependabot-fix-knowledge/index.md`:
 
 ---
 
-## Step 5: Summary table
+## Step 6: Summary table
 
 Present one table per host after processing all PRs:
 
