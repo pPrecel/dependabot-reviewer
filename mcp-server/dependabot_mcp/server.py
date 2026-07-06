@@ -386,6 +386,34 @@ async def get_pr_head_sha(host: str, token: str, repo: str, pr_number: int) -> s
 
 
 @mcp.tool()
+async def get_branch_head_sha(host: str, token: str, repo: str, branch: str) -> str:
+    """
+    Get the HEAD commit SHA for a branch.
+    Raises HTTPStatusError (404) if the branch does not exist.
+    """
+    client = get_client(host, token)
+    return await client.get_branch_head_sha(repo, branch)
+
+
+@mcp.tool()
+async def create_pull_request(
+    host: str,
+    token: str,
+    repo: str,
+    title: str,
+    head: str,
+    base: str,
+    body: str,
+) -> dict:
+    """
+    Open a new pull request. Returns {pr_number, pr_url}.
+    head: source branch name. base: target branch name (e.g. "main").
+    """
+    client = get_client(host, token)
+    return await client.create_pull_request(repo, title, head, base, body)
+
+
+@mcp.tool()
 async def get_branch_ci_status(host: str, token: str, repo: str, branch: str) -> dict:
     """
     Get CI status of the HEAD commit of a branch.

@@ -133,6 +133,22 @@ class GithubClient:
 
     # ── Write ─────────────────────────────────────────────────────────────
 
+    async def create_pull_request(
+        self,
+        repo: str,
+        title: str,
+        head: str,
+        base: str,
+        body: str,
+    ) -> dict:
+        r = await self._client.post(
+            f"/repos/{repo}/pulls",
+            json={"title": title, "head": head, "base": base, "body": body},
+        )
+        r.raise_for_status()
+        data = r.json()
+        return {"pr_number": data["number"], "pr_url": data["html_url"]}
+
     async def post_review(self, repo: str, number: int, body: str) -> dict:
         r = await self._client.post(
             f"/repos/{repo}/pulls/{number}/reviews",
