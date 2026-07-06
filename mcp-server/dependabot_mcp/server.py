@@ -43,10 +43,12 @@ async def list_dependabot_prs(host: str, token: str) -> list[dict]:
     Returns: list of {number, repo, title, url}
     """
     client = get_client(host, token)
-    authors = " OR ".join(f"author:{a}" for a in _BOT_AUTHORS)
     queries = [
-        f"is:open is:pr {authors} review-requested:@me",
-        f"is:open is:pr {authors} reviewed-by:@me",
+        f"is:open is:pr author:{author} review-requested:@me"
+        for author in _BOT_AUTHORS
+    ] + [
+        f"is:open is:pr author:{author} reviewed-by:@me"
+        for author in _BOT_AUTHORS
     ]
     results = await asyncio.gather(*[client.search_prs(q) for q in queries], return_exceptions=True)
     merged = []
@@ -443,9 +445,11 @@ async def list_recently_merged_dependabot_prs(host: str, token: str, since: str)
         if host == "github.com"
         else ["dependabot", "ospo-renovate"]
     )
-    authors = " OR ".join(f"author:{a}" for a in bot_authors)
     results = await asyncio.gather(
-        client.search_prs(f"is:pr is:merged {authors} merged:>={since} reviewed-by:@me"),
+        *[
+            client.search_prs(f"is:pr is:merged author:{a} merged:>={since} reviewed-by:@me")
+            for a in bot_authors
+        ],
         return_exceptions=True,
     )
     merged = []
