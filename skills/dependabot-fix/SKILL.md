@@ -22,13 +22,41 @@ is not present, stop and report an error.
 
 ---
 
-## Step 1: Discover hosts and acquire tokens
+## Step 1: Parse argument and acquire token
 
+### 1a: Read the argument
+
+The skill is invoked as `/dependabot-fix [host] <ref>`. Parse `ARGUMENTS` (the text
+after the skill name).
+
+Supported formats — apply the **first matching rule**:
+
+| Rule | Pattern | Result |
+|------|---------|--------|
+| 1 | Argument is a URL: `https://<host>/...` | Extract host from URL domain. If URL contains `/pull/<N>`, it is a PR ref; otherwise it is a repo ref. |
+| 2 | Argument starts with a known host token (word containing a `.` and matching an authenticated host, e.g. `github.tools.sap`) followed by `org/repo#N` | explicit host + PR ref |
+| 3 | Argument starts with a known host token followed by `org/repo` | explicit host + repo ref |
+| 4 | Argument matches `org/repo#N` (no host prefix) | default host + PR ref |
+| 5 | Argument matches `org/repo` (no host prefix, no `#`) | default host + repo ref |
+| 6 | Argument is empty or not parseable | Ask once: `"Podaj PR lub repo do naprawy (np. org/repo#123 lub https://github.com/org/repo/pull/123):"`. If the reply still does not match any rule above, print an error and stop. |
+
+### 1b: Resolve host and acquire token
+
+Run:
 ```bash
 gh auth status --show-token
 ```
 
-Parse the output to extract every host and its token. Build a list of `{host, token}` pairs — one per authenticated host. Process all of them.
+Parse the output to extract every `{host, token}` pair.
+
+Host resolution:
+1. If a URL was provided → host is the URL domain (e.g. `github.com`, `github.tools.sap`)
+2. If an explicit host was provided in the argument → use it
+3. If no host was provided → use `github.com` as default
+4. If the resolved host is not present in `gh auth status` output → stop with error:
+   `"Error: not logged in to <host>. Run 'gh auth login --hostname <host>' or provide the host explicitly."`
+
+Store `{host, token, target_type, repo, pr_number_or_branch}` for use in all subsequent steps.
 
 ---
 
