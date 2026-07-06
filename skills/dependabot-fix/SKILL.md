@@ -251,6 +251,100 @@ Wait for user response and act accordingly. Option 3 triggers Step 6c (diagnosti
 
 ---
 
+## Step 6: Post-execution
+
+### 6a: Success comment
+
+Post a comment on the PR (or the newly created PR for the main-branch case):
+
+```
+post_pr_comment(host, token, repo, pr_number, body="""
+Automatic fix applied ✅
+
+**{library}**: {old_version} → {new_version}  (omit if not a single-library bump)
+**Fixed:** {merge conflict | CI: <check-name> | merge conflict + CI: <check-name>}
+**Commit:** {commit_url}
+**Knowledge base:** {used entry: "<title>" | new entry recorded: "<title>" | no entry recorded}
+""")
+```
+
+For the main-branch case, print the new PR URL to the user as well.
+
+### 6b: Knowledge base update
+
+Evaluate whether the fix is generic enough to be reused in another repo:
+
+Record when:
+- Fix is reproducible given the same problem type + language/package manager
+- Fix does not depend on repo-specific business logic
+- Fix could save time on a future PR
+
+Do not record when:
+- Fix was specific to this repo's internal structure
+- Fix required understanding of business logic beyond dependency updates
+
+If recording, determine the next sequential ID by listing files in
+`~/.claude/dependabot-fix-knowledge/entries/`. Write the new entry:
+
+```markdown
+---
+id: <NNN>
+title: <descriptive title>
+problem_type: ci-failure | merge-conflict
+trigger_pattern: "<log string or condition that identifies this problem>"
+languages: [<go|python|javascript|...>]
+package_managers: [<go-modules|npm|pip|...>]
+---
+
+## Problem
+
+<What the failure looks like — exact error message or condition>
+
+## Fix
+
+<Concrete steps: which files to check, what to change, how to call commit_files>
+
+## Example
+
+PR: {repo}#{pr_number} — bumped {library} {old_version} → {new_version}
+```
+
+If `~/.claude/dependabot-fix-knowledge/index.md` does not exist yet, create it:
+
+```markdown
+# dependabot-fix knowledge base
+
+Accumulated fix patterns. Read this index before fixing any ACTION REQUIRED PR.
+
+```
+
+Append one line to the index:
+
+```
+- [<NNN> <title>](entries/<filename>) — <problem_type>: <trigger_pattern>
+```
+
+### 6c: Diagnostic comment (infrastructure / unfixable case)
+
+When the problem cannot be fixed with code (infrastructure issue, or Step 5d option 3):
+
+```
+post_pr_comment(host, token, repo, pr_number, body="""
+Unable to fix automatically ⚠️
+
+**What was investigated:**
+<description of what was checked: logs read, files examined, diff analysed>
+
+**Diagnosis:**
+<specific reason why automatic fix is not possible — be concrete>
+
+**Recommended manual action:**
+<numbered step-by-step instructions for a human>
+""")
+```
+
+---
+
 ## Step 6: Discover PRs
 
 For each host:
