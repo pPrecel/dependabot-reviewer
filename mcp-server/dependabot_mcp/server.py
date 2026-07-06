@@ -6,7 +6,7 @@ from .body_parser import extract_changelog
 from .models import (
     PRSummary, Review, CheckResult, DiffClassification,
     PRDetails, Comment, PrepareMergeResult, CommentResult,
-    CheckLog, CommitResult,
+    CheckLog, CommitResult, BranchCiStatus,
 )
 
 mcp = FastMCP("dependabot-reviewer")
@@ -392,3 +392,49 @@ async def get_check_run_ids(host: str, token: str, repo: str, head_sha: str) -> 
         {"id": c["id"], "name": c["name"], "conclusion": c.get("conclusion"), "status": c.get("status")}
         for c in checks
     ]
+
+
+@mcp.tool()
+async def get_branch_ci_status(host: str, token: str, repo: str, branch: str) -> dict:
+    """
+    Get CI status of the HEAD commit of a branch.
+    Returns {sha, branch, ci_status, failing_checks, total_checks, passing_checks}.
+    ci_status: "passing" | "failing" | "pending" | "unknown"
+    Raises HTTPStatusError if the branch does not exist (e.g. 404).
+    """
+    client = GithubClient(host, token)
+    sha = await client.get_branch_head_sha(repo, branch)
+    checks = await client.list_check_runs(repo, sha)
+
+    if not checks:
+        return BranchCiStatus(
+            sha=sha, branch=branch, ci_status="unknown",
+            failing_checks=[], total_checks=0, passing_checks=0,
+        ).model_dump()
+
+    failing = [
+        {"name": c["name"], "conclusion": c.get("conclusion", "")}
+        for c in checks
+        if c.get("conclusion") in ("failure", "timed_out")
+    ]
+    pending = any(
+        c.get("status") in ("in_progress", "queued") or c.get("conclusion") is None
+        for c in checks
+    )
+    passing_count = sum(1 for c in checks if c.get("conclusion") == "success")
+
+    if failing:
+        ci_status = "failing"
+    elif pending:
+        ci_status = "pending"
+    else:
+        ci_status = "passing"
+
+    return BranchCiStatus(
+        sha=sha,
+        branch=branch,
+        ci_status=ci_status,
+        failing_checks=failing,
+        total_checks=len(checks),
+        passing_checks=passing_count,
+    ).model_dump()
