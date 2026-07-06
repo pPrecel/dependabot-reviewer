@@ -25,6 +25,12 @@ Parse the output to extract every host and its token. Build a list of `{host, to
 
 ---
 
+## Step 1.5: Load knowledge base
+
+Read the knowledge base as described in the agent's **Knowledge Base** section. Keep loaded entries available for all subsequent PR processing steps.
+
+---
+
 ## Step 2: Discover PRs
 
 For each discovered host, call:
@@ -80,11 +86,25 @@ Use `diff_classification` from `get_pr_details`:
 - `type == "manifest"` + `semver == "minor"` → fetch changelog
 - `type == "manifest"` + `semver == "major"` → fetch changelog, likely ACTION REQUIRED
 
+### Step B1.5: Proactive knowledge base check
+
+**Before checking CI or changelog**, scan the loaded knowledge base entries for any that match this PR based on repo name and diff content:
+
+- For each entry that has a `repos` field: check if `pr.repo` matches one of the listed repos.
+- For matching entries, inspect the `## Proactive detection` section (if present) and compare the diff against the described pattern.
+- If a match is found → immediately classify as **ACTION REQUIRED** and post a comment using `post_action_required_comment` with:
+  - `reason="breaking-changes"`
+  - `changelog_excerpt` set to the **Fix** section from the matching KB entry (formatted as the required manual steps)
+  - All other fields from `diff_classification`
+- Set status `ACTION REQUIRED` and **skip Steps B2–B5** for this PR.
+
+This step catches known repo-specific patterns that require manual action even when CI is green or pending.
+
 ### Step B2: Check merge_state and CI
 
 - `merge_state == "behind"` → call `prepare_merge` immediately (do not check CI or changelog). If result is `"needs_manual_rebase"` → ACTION REQUIRED. If `"done"` → status `UPDATED`, stop.
 - `merge_state == "dirty"` → ACTION REQUIRED (merge conflict).
-- `ci_status == "failing"` → ACTION REQUIRED (even if diff is safe).
+- `ci_status == "failing"` → ACTION REQUIRED (even if diff is safe). Before posting the comment, check knowledge base entries for matches on the failing check names and diff classification. If a match is found, include the known root cause and fix steps in the `post_action_required_comment` body.
 
 ### Step B3: Read changelog (from PR details)
 
