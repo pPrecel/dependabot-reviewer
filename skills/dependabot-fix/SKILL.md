@@ -157,7 +157,101 @@ Choose the approach based on problem type:
 
 ---
 
-## Step 5: Discover PRs
+## Step 5: Execute
+
+Execute the approved plan. Log each completed action internally (used in the success
+comment and in unexpected-situation messages).
+
+### 5a: Fix merge conflict (if applicable)
+
+1. For each conflicted file, fetch content from the PR branch:
+   `get_file_contents(host, token, repo, path=<path>, ref=<pr_branch>)`
+   Also fetch from base branch if needed for reference:
+   `get_file_contents(host, token, repo, path=<path>, ref=<base_branch>)`
+2. Resolve: in dependency files (go.mod, go.sum, package-lock.json, Gemfile.lock, etc.)
+   the Dependabot/Renovate version always wins. For other files: prefer the PR branch
+   version for dependency-related lines.
+3. Fetch current HEAD SHA: `get_pr_head_sha(host, token, repo, pr_number)`
+4. Commit resolved files:
+   ```
+   commit_files(host, token, repo,
+     branch=<pr_branch>,
+     files=[{path, content}, ...],
+     message="fix: resolve merge conflicts [dependabot skip]",
+     head_sha=<sha>)
+   ```
+5. If conflict cannot be resolved without understanding business logic → go to Step 5d.
+
+### 5b: Fix failing CI (if applicable)
+
+1. Fetch the relevant source files identified during analysis:
+   `get_file_contents(host, token, repo, path=<path>, ref=<pr_branch>)`
+2. Apply the fix to the file content.
+3. Re-fetch HEAD SHA (always re-fetch after any previous `commit_files` call):
+   `get_pr_head_sha(host, token, repo, pr_number)`
+4. Commit:
+   ```
+   commit_files(host, token, repo,
+     branch=<pr_branch>,
+     files=[{path, content}, ...],
+     message="fix: resolve CI failure in <check_name> [dependabot skip]",
+     head_sha=<sha>)
+   ```
+
+### 5c: Create patch branch + PR (main branch case)
+
+1. Determine base branch name (`main` or `master` — whichever responded in Step 3b).
+2. Fetch HEAD SHA of the base branch:
+   ```
+   get_branch_head_sha(host, token, repo, branch=<base_branch>)
+   ```
+3. Apply fixes to files, then commit to a new branch:
+   ```
+   commit_files(host, token, repo,
+     branch="fix/dependabot-ci-<short-description>",
+     files=[{path, content}, ...],
+     message="fix: restore CI after dependency update [dependabot skip]",
+     head_sha=<base_branch_sha>)
+   ```
+   `commit_files` creates the branch automatically when the branch name is new
+   and `head_sha` points to an existing commit.
+4. Open PR:
+   ```
+   create_pull_request(host, token, repo,
+     title="fix: restore CI after dependency update",
+     head="fix/dependabot-ci-<short-description>",
+     base=<base_branch>,
+     body="Automated fix for CI failure introduced by a Dependabot/Renovate merge.")
+   ```
+
+### 5d: Unexpected situation — pause and ask
+
+Stop autonomous execution and return to the user when:
+- A file to be modified does not exist on the PR branch
+- A conflict cannot be resolved without business logic knowledge
+- `commit_files` returns an error (e.g. stale HEAD SHA)
+- The knowledge-base fix does not apply cleanly to the current file version
+
+Present:
+
+```
+## Unexpected situation — decision required
+
+**What I did:** <completed steps>
+**Stuck on:** <concrete problem>
+**Options:**
+1. <option A — e.g. "Skip this file and commit the rest">
+2. <option B — e.g. "Provide the correct resolution for <file> and I will commit it">
+3. Leave a diagnostic comment on the PR and stop
+
+What should I do?
+```
+
+Wait for user response and act accordingly. Option 3 triggers Step 6c (diagnostic comment).
+
+---
+
+## Step 6: Discover PRs
 
 For each host:
 
