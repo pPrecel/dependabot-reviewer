@@ -111,7 +111,53 @@ infrastructure), state this clearly and stop:
 
 ---
 
-## Step 4: Discover PRs
+## Step 4: Propose repair plan and wait for confirmation
+
+Present the analysis result and a concrete repair plan. **Do not make any changes yet.**
+
+### Format
+
+```
+## Analysis: <repo>#<pr_number>  (or <repo> @ <branch>)
+
+**Problem:** <merge conflict | CI failing: <check names> | both>
+**Root cause:** <concrete description from logs / diff>
+**Knowledge base:** <"matches entry NNN: <title>" | "no matching entry">
+
+**Repair plan:**
+1. <step 1 — concrete action, e.g. "Replace NewSimpleClientset → NewClientset in 3 files">
+2. <step 2 — e.g. "Commit to PR branch with message 'fix: SA1019 [dependabot skip]'">
+...
+
+**Approach:** <one of: commit fix to PR branch | commit resolved conflicts to PR branch |
+               create patch branch + open PR | post diagnostic comment (infra issue)>
+**Files to change:** <comma-separated list, or "none (diagnostic comment only)">
+
+Czy wykonać? (tak / nie / uwagi)
+```
+
+### Response handling
+
+- `tak`, `yes`, or empty reply → proceed to Step 5
+- `nie` or `no` → stop without any changes; print "Anulowano — żadnych zmian nie wprowadzono."
+- Any other text → treat as refinement feedback: update the plan accordingly and present
+  the revised plan again with the same question. Repeat until `tak`/`nie`.
+
+### Methodology selection
+
+Choose the approach based on problem type:
+
+| Problem | Approach |
+|---------|----------|
+| CI failing on PR branch | Commit fix directly to PR branch |
+| Merge conflict on PR branch | Commit resolved conflicts to PR branch |
+| CI failing on main after merge | Create patch branch (based on `main`/`master`) + open PR to that same base branch |
+| Complex API migration on PR branch | Commit migration fix to PR branch |
+| Infrastructure problem (e.g. GCP IAM, CI runner misconfiguration) | Post diagnostic comment — cannot be fixed with code |
+
+---
+
+## Step 5: Discover PRs
 
 For each host:
 
@@ -121,7 +167,7 @@ list_dependabot_prs(host=<host>, token=<token>)
 
 ---
 
-## Step 5: Filter ACTION REQUIRED PRs
+## Step 6: Filter ACTION REQUIRED PRs
 
 For each PR call:
 
@@ -135,11 +181,11 @@ If no ACTION REQUIRED PRs found for a host → skip and note in summary.
 
 ---
 
-## Step 6: Fix pipeline (per PR)
+## Step 7: Fix pipeline (per PR)
 
 Process PRs sequentially. For each ACTION REQUIRED PR:
 
-### Step 6a: Detect problem type + consult knowledge base
+### Step 7a: Detect problem type + consult knowledge base
 
 From `get_pr_details` result, determine which problems are present:
 - `merge_state == "dirty"` → merge conflict
@@ -155,7 +201,7 @@ For each entry in the index that matches the current problem type (`merge-confli
 
 ---
 
-### Step 6b: Fix merge conflict (if `merge_state == "dirty"`)
+### Step 7b: Fix merge conflict (if `merge_state == "dirty"`)
 
 1. Call `get_raw_diff(host, token, repo, pr_number)` to get the raw diff text. Identify files containing `<<<<<<<` conflict markers.
 
@@ -187,12 +233,12 @@ For each entry in the index that matches the current problem type (`merge-confli
    )
    ```
 
-6. On success → record `conflict_fixed = true`, continue to Step 6c if CI also failing.
-7. On failure (cannot determine correct resolution) → go to Step 6d, skip Step 6c.
+6. On success → record `conflict_fixed = true`, continue to Step 7c if CI also failing.
+7. On failure (cannot determine correct resolution) → go to Step 7d, skip Step 7c.
 
 ---
 
-### Step 6c: Fix failing CI (if `ci_status == "failing"`)
+### Step 7c: Fix failing CI (if `ci_status == "failing"`)
 
 1. For each entry in `failing_checks`:
    First, get the check run IDs for the current HEAD SHA:
@@ -236,12 +282,12 @@ For each entry in the index that matches the current problem type (`merge-confli
    )
    ```
 
-8. On success → record `ci_fixed = true`, proceed to Step 6e.
-9. On failure (cannot identify cause or apply fix) → go to Step 6d.
+8. On success → record `ci_fixed = true`, proceed to Step 7e.
+9. On failure (cannot identify cause or apply fix) → go to Step 7d.
 
 ---
 
-### Step 6d: Diagnostic comment (fallback)
+### Step 7d: Diagnostic comment (fallback)
 
 When automatic fix is not possible:
 
@@ -266,7 +312,7 @@ Set PR result to `⚠️ NEEDS MANUAL ACTION`.
 
 ---
 
-### Step 6e: Success comment + knowledge base update
+### Step 7e: Success comment + knowledge base update
 
 Post success comment:
 
@@ -338,7 +384,7 @@ Then append one line to `~/.claude/dependabot-fix-knowledge/index.md`:
 
 ---
 
-## Step 7: Summary table
+## Step 8: Summary table
 
 Present one table per host after processing all PRs:
 
