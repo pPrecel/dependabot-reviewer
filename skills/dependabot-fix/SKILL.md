@@ -71,7 +71,47 @@ for use during analysis and fix planning in Steps 3 and 4.
 
 ---
 
-## Step 3: Discover PRs
+## Step 3: Analyse (autonomous — no user interaction)
+
+Run the analysis that matches `target_type`.
+
+### 3a: PR analysis (`target_type == "pr"`)
+
+1. Call `get_pr_details(host, token, repo, pr_number)`.
+2. Determine problem types present:
+   - `merge_state == "dirty"` → **merge conflict**
+   - `ci_status == "failing"` → **failing CI**
+   - Both → both problems; conflict will be addressed first
+   - Neither → note "no active problem detected (stale ACTION REQUIRED comment?)" and skip to Step 4 directly
+3. If **failing CI**: for each entry in `failing_checks`, call
+   `get_check_logs(host, token, repo, check_run_id=<id>)` and read the returned log file.
+4. If **merge conflict**: call `get_raw_diff(host, token, repo, pr_number)` and identify
+   files containing `<<<<<<<` conflict markers.
+5. Match findings against knowledge base entries loaded in Step 2.
+
+### 3b: Repo/branch analysis (`target_type == "repo"`)
+
+1. Call `get_branch_ci_status(host, token, repo, branch="main")`.
+   - If 404 → retry with `branch="master"`.
+   - If both fail → stop with error.
+2. If `ci_status != "failing"` → report "Main branch CI is not failing" and stop.
+3. For each entry in `failing_checks`, call `get_check_logs` and read the log file.
+4. Call `list_recently_merged_dependabot_prs(host, token, since=<ISO date 14 days ago>)`.
+   Filter to PRs in this `repo`. Identify which merged PR most likely introduced the failure
+   by correlating merge timestamps with the first failing CI run.
+5. Match findings against knowledge base entries.
+
+### 3c: Scope check
+
+If the root cause does not appear to be a Dependabot or Renovate dependency update
+(e.g. the failure predates any recent dependency merges, or the logs point to unrelated
+infrastructure), state this clearly and stop:
+
+`"This failure does not appear to be caused by a Dependabot/Renovate update. Scope of this skill is dependency-update problems only."`
+
+---
+
+## Step 4: Discover PRs
 
 For each host:
 
@@ -81,7 +121,7 @@ list_dependabot_prs(host=<host>, token=<token>)
 
 ---
 
-## Step 4: Filter ACTION REQUIRED PRs
+## Step 5: Filter ACTION REQUIRED PRs
 
 For each PR call:
 
@@ -95,11 +135,11 @@ If no ACTION REQUIRED PRs found for a host → skip and note in summary.
 
 ---
 
-## Step 5: Fix pipeline (per PR)
+## Step 6: Fix pipeline (per PR)
 
 Process PRs sequentially. For each ACTION REQUIRED PR:
 
-### Step 5a: Detect problem type + consult knowledge base
+### Step 6a: Detect problem type + consult knowledge base
 
 From `get_pr_details` result, determine which problems are present:
 - `merge_state == "dirty"` → merge conflict
@@ -115,7 +155,7 @@ For each entry in the index that matches the current problem type (`merge-confli
 
 ---
 
-### Step 5b: Fix merge conflict (if `merge_state == "dirty"`)
+### Step 6b: Fix merge conflict (if `merge_state == "dirty"`)
 
 1. Call `get_raw_diff(host, token, repo, pr_number)` to get the raw diff text. Identify files containing `<<<<<<<` conflict markers.
 
@@ -129,7 +169,7 @@ For each entry in the index that matches the current problem type (`merge-confli
    ```
    The PR branch file will contain `<<<<<<<` conflict markers.
 
-3. Resolve conflicts: in dependency files (go.mod, go.sum, package-lock.json, Gemfile.lock, etc.) the Dependabot version always wins. For other files: prefer the PR branch (Dependabot) version for dependency-related lines; if a conflict cannot be resolved without understanding business logic, treat this file as unresolvable and go to Step 5d with a clear diagnosis. Produce clean resolved content with no conflict markers.
+3. Resolve conflicts: in dependency files (go.mod, go.sum, package-lock.json, Gemfile.lock, etc.) the Dependabot version always wins. For other files: prefer the PR branch (Dependabot) version for dependency-related lines; if a conflict cannot be resolved without understanding business logic, treat this file as unresolvable and go to Step 6d with a clear diagnosis. Produce clean resolved content with no conflict markers.
 
 4. Get the current HEAD SHA of the PR branch:
    ```
@@ -147,12 +187,12 @@ For each entry in the index that matches the current problem type (`merge-confli
    )
    ```
 
-6. On success → record `conflict_fixed = true`, continue to Step 5c if CI also failing.
-7. On failure (cannot determine correct resolution) → go to Step 5d, skip Step 5c.
+6. On success → record `conflict_fixed = true`, continue to Step 6c if CI also failing.
+7. On failure (cannot determine correct resolution) → go to Step 6d, skip Step 6c.
 
 ---
 
-### Step 5c: Fix failing CI (if `ci_status == "failing"`)
+### Step 6c: Fix failing CI (if `ci_status == "failing"`)
 
 1. For each entry in `failing_checks`:
    First, get the check run IDs for the current HEAD SHA:
@@ -196,12 +236,12 @@ For each entry in the index that matches the current problem type (`merge-confli
    )
    ```
 
-8. On success → record `ci_fixed = true`, proceed to Step 5e.
-9. On failure (cannot identify cause or apply fix) → go to Step 5d.
+8. On success → record `ci_fixed = true`, proceed to Step 6e.
+9. On failure (cannot identify cause or apply fix) → go to Step 6d.
 
 ---
 
-### Step 5d: Diagnostic comment (fallback)
+### Step 6d: Diagnostic comment (fallback)
 
 When automatic fix is not possible:
 
@@ -226,7 +266,7 @@ Set PR result to `⚠️ NEEDS MANUAL ACTION`.
 
 ---
 
-### Step 5e: Success comment + knowledge base update
+### Step 6e: Success comment + knowledge base update
 
 Post success comment:
 
@@ -298,7 +338,7 @@ Then append one line to `~/.claude/dependabot-fix-knowledge/index.md`:
 
 ---
 
-## Step 6: Summary table
+## Step 7: Summary table
 
 Present one table per host after processing all PRs:
 
