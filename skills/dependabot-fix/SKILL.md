@@ -1,17 +1,24 @@
 ---
 name: dependabot-fix
 description: >
-  Fix all open Dependabot and ospo-renovate PRs in ACTION REQUIRED state.
-  Resolves merge conflicts and failing CI by committing fixes directly to the PR branch
-  via GitHub API. Maintains a persistent knowledge base of successful fix patterns.
-  Invoke with: /dependabot-fix
+  Fix a single selected Dependabot or Renovate PR (or a repository whose main branch
+  CI broke after merging such a PR). Runs analysis autonomously, then proposes a repair
+  plan and waits for user confirmation before making any changes.
+  Invoke with: /dependabot-fix [host] <ref>
+  Examples: /dependabot-fix kyma-project/cli#2945
+            /dependabot-fix github.tools.sap kyma/warden#209
+            /dependabot-fix https://github.com/kyma-project/cli/pull/2945
+            /dependabot-fix kyma-project/cli
 ---
 
 # /dependabot-fix
 
-You are executing the Dependabot fix workflow. Work autonomously — do not ask the user for input. Process all ACTION REQUIRED PRs and present results at the end.
+Fix a single Dependabot or Renovate problem — either a PR in ACTION REQUIRED state or a
+repository whose main-branch CI broke after merging such a PR.
 
-All GitHub I/O is performed through the `dependabot-reviewer` MCP server tools. Do not call `gh` CLI for any GitHub operations — only for token acquisition. If the `dependabot-reviewer` MCP server is not present, stop and report an error.
+All GitHub I/O is performed through the `dependabot-reviewer` MCP server tools. Do not
+call `gh` CLI for any GitHub operations — only for token acquisition. If the MCP server
+is not present, stop and report an error.
 
 ---
 
