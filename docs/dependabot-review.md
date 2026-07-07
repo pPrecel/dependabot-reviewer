@@ -29,14 +29,14 @@ for each PR
 │
 ├── get_pr_details()
 │
+├── [Step 3.5] merge_state == "behind"?
+│   └── YES → update_branch()
+│               ├── "needs_manual_rebase" → 🔄 UPDATED  (stop)
+│               └── "done" → get_pr_details() again → continue
+│
 ├── already approved by me AND automerge set?
 │   │
 │   ├── YES → Path A (already-handled PR)
-│   │   │
-│   │   ├── merge_state == "behind"?
-│   │   │   └── YES → prepare_merge()
-│   │   │               ├── "done"        → 🔄 UPDATED
-│   │   │               └── "needs_manual_rebase" → ⚠️ ACTION REQUIRED
 │   │   │
 │   │   ├── merge_state == "dirty"?
 │   │   │   └── YES → ⚠️ ACTION REQUIRED (merge conflict)
@@ -62,11 +62,6 @@ for each PR
 │       │   └── pr.repo matches KB entry AND diff matches proactive detection pattern?
 │       │       └── YES → post_action_required_comment(breaking-changes, fix steps from KB)
 │       │               → ⚠️ ACTION REQUIRED  [skip B2–B5]
-│       │
-│       ├── [B2] merge_state == "behind"?      ← HIGHEST PRIORITY: check before CI
-│       │   └── YES → prepare_merge()
-│       │               ├── "done"                → 🔄 UPDATED  (stop)
-│       │               └── "needs_manual_rebase" → ⚠️ ACTION REQUIRED  (stop)
 │       │
 │       ├── [B2] merge_state == "dirty"?
 │       │   └── YES → ⚠️ ACTION REQUIRED (merge conflict)
@@ -94,9 +89,11 @@ for each PR
 │                                    → ⚠️ ACTION REQUIRED
 ```
 
-## Critical Rule: `merge_state == "behind"` takes priority
+## Critical Rule: `merge_state == "behind"` is handled in Step 3.5
 
-**`merge_state == "behind"` always triggers `prepare_merge()` immediately** — in both Path A and Path B, before CI status or changelog are checked. Never let `ci_status == "failing"` override this path.
+**`merge_state == "behind"` is resolved in Step 3.5** — before Path A or Path B routing — by calling `update_branch()`. By the time Path A or Path B runs, the branch is guaranteed to be up to date. Neither path contains `"behind"` handling.
+
+This ordering ensures that CI status, changelog analysis, and automerge decisions always run on an up-to-date branch. A failing CI on an outdated branch is meaningless — the real CI result only appears after the branch is updated. Checking CI before updating would produce stale decisions.
 
 ## Status Legend
 
