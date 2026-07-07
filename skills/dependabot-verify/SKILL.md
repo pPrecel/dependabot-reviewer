@@ -17,13 +17,56 @@ All GitHub I/O is performed through the `dependabot-reviewer` MCP server tools. 
 
 ## Workflow
 
+## Step 0: Parse arguments
+
+Parse `ARGUMENTS` (the text after the skill name) before doing anything else. Produce three variables used throughout the rest of the workflow:
+
+| Variable | Type | Description |
+|----------|------|-------------|
+| `filter_hosts` | `[string] \| null` | hosts to process; `null` = all authenticated hosts |
+| `filter_repo` | `"org/repo" \| null` | exact repo to scope to |
+| `filter_pr` | `int \| null` | single PR number; requires `filter_repo` |
+
+Also derive:
+
+- `filter_org` — the part before `/` in `filter_repo`, or the standalone `<org>` argument, or `null`
+
+### Parsing rules (first match wins)
+
+Strip a leading `https://` prefix first (do not pass the protocol to any tool).
+
+| Input format | `filter_hosts` | `filter_repo` | `filter_pr` |
+|-------------|----------------|---------------|-------------|
+| `<host>/<org>/<repo>/pull/<PR>` (after stripping `https://`) | `[host]` | `org/repo` | PR |
+| `<host>/<org>/<repo>` | `[host]` | `org/repo` | null |
+| `<host>/<org>` | `[host]` | null | null |
+| `<host>` (contains `.`) | `[host]` | null | null |
+| `<org>/<repo>:<PR>` | null | `org/repo` | PR |
+| `<org>/<repo>#<PR>` | null | `org/repo` | PR |
+| `<org>/<repo>` | null | `org/repo` | null |
+| `<org>` (no `.`) | null | null | null |
+| *(empty)* | null | null | null |
+
+**Host detection:** a path segment is a host if it contains `.`; otherwise it is an org.
+
+### Errors
+
+- `filter_hosts` contains a host not found in `gh auth status` output → stop:
+  `"Error: not logged in to <host>. Run 'gh auth login --hostname <host>'."`
+- `filter_pr` set but `filter_repo` is null → stop:
+  `"Error: PR number requires a repo (use <org>/<repo>:<PR>)."`
+
+---
+
 ### Step 1: Discover hosts and acquire tokens
 
 ```bash
 gh auth status --show-token
 ```
 
-Parse the output to extract every host and its token. Build a list of `{host, token}` pairs — one per authenticated host. Process all of them; do not hardcode any host names.
+Parse the output to extract every host and its token. Build a list of `{host, token}` pairs — one per authenticated host.
+
+If `filter_hosts` is non-null (set in Step 0), keep only pairs where the host appears in `filter_hosts`. Validate: if any host in `filter_hosts` is not present in `gh auth status` output, stop with the error described in Step 0. Do not hardcode any host names.
 
 ---
 
@@ -35,13 +78,25 @@ Read the knowledge base as described in the agent's **Knowledge Base** section. 
 
 ### Step 2: Discover PRs
 
-For each discovered host, call:
+For each discovered host, apply the following routing based on the filter variables set in Step 0:
 
 ```
-list_dependabot_prs(host=<host>, token=<token>)
+if filter_pr is not null:
+    # Skip list_dependabot_prs entirely — call get_pr_details directly in Step 3
+    prs = [synthetic entry: {number: filter_pr, repo: filter_repo, title: "(single PR)", url: ""}]
+elif filter_repo is not null:
+    prs = list_dependabot_prs(host, token, repo=filter_repo)
+elif filter_org is not null:
+    prs = list_dependabot_prs(host, token, org=filter_org)
+else:
+    prs = list_dependabot_prs(host, token)
 ```
 
-Collect results into one list per host, deduplicated by PR number. If a host returns an error, record the error and continue with the other hosts.
+Deduplicate by PR number. If a host returns an error from `list_dependabot_prs`, record the error and continue with the other hosts.
+
+If the combined list across all hosts is empty, print:
+`No open Dependabot PRs matching the given filter.`
+and stop.
 
 ---
 
