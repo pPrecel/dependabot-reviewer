@@ -3,7 +3,7 @@
 ## Invocation
 
 ```
-/dependabot-review [<scope>]
+/dependabot-verify [<scope>]
 ```
 
 `<scope>` is optional. Supported formats:
