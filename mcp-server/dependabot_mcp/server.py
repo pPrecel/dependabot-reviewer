@@ -1,4 +1,5 @@
 import asyncio
+import httpx
 from mcp.server.fastmcp import FastMCP
 from .github_client import get_client
 from .classifier import classify_diff
@@ -6,7 +7,7 @@ from .body_parser import extract_changelog
 from .models import (
     PRSummary, Review, CheckResult, DiffClassification,
     PRDetails, Comment, PrepareMergeResult, CommentResult,
-    CheckLog, CommitResult, BranchCiStatus,
+    CheckLog, CommitResult, BranchCiStatus, UpdateBranchResult,
 )
 
 mcp = FastMCP("dependabot-reviewer")
@@ -476,6 +477,36 @@ async def get_branch_ci_status(host: str, token: str, repo: str, branch: str) ->
         total_checks=len(checks),
         passing_checks=passing_count,
     ).model_dump()
+
+
+@mcp.tool()
+async def update_branch(host: str, token: str, repo: str, pr_number: int) -> dict:
+    """
+    Update a PR branch that is behind its base branch.
+    Returns {status: "done" | "needs_manual_rebase", branch_updated: bool, message: str}.
+    Does NOT approve or set automerge — use prepare_merge for that.
+    """
+    client = get_client(host, token)
+    try:
+        await client.update_branch(repo, pr_number)
+        return UpdateBranchResult(
+            status="done",
+            branch_updated=True,
+            message="",
+        ).model_dump()
+    except httpx.HTTPStatusError as e:
+        body = e.response.text
+        if "already up-to-date" in body.lower():
+            return UpdateBranchResult(
+                status="done",
+                branch_updated=False,
+                message="Branch is already up to date.",
+            ).model_dump()
+        return UpdateBranchResult(
+            status="needs_manual_rebase",
+            branch_updated=False,
+            message="PR has merge conflicts that require manual resolution before merging.",
+        ).model_dump()
 
 
 @mcp.tool()
