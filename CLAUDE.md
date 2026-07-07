@@ -8,7 +8,9 @@ A Claude Code plugin that automates Dependabot PR review. It provides:
 
 - **`/dependabot-review` skill** (`skills/dependabot-review/SKILL.md`) — reviews PRs: approves safe updates, sets automerge, updates branches, leaves analysis comments
 - **`/dependabot-verify` skill** (`skills/dependabot-verify/SKILL.md`) — read-only status check: scans PRs and reports their state without taking any write actions
-- **`dependabot-reviewer` agent** (`agents/dependabot-reviewer.md`) — shared domain knowledge used by both skills
+- **`/dependabot-fix` skill** (`skills/dependabot-fix/SKILL.md`) — fixes a single PR or repo with failing main-branch CI: analyses the problem, proposes a repair plan, and executes after user confirmation
+- **`/dependabot-update` skill** (`skills/dependabot-update/SKILL.md`) — bulk branch updater: updates branches behind their base and resolves dependency-file merge conflicts autonomously
+- **`dependabot-reviewer` agent** (`agents/dependabot-reviewer.md`) — shared domain knowledge used by all skills
 
 The plugin is declared in `.claude-plugin/plugin.json`.
 
@@ -45,16 +47,20 @@ Without the tag, `/plugin` will report the plugin is already up to date even tho
 **Skills** contain **only their own workflow logic**:
 - `dependabot-review/SKILL.md` — Path A/B routing, decision table, APPROVE/ACTION REQUIRED action sequences, comment templates, summary table format (APPROVED/UPDATED/ACTION REQUIRED)
 - `dependabot-verify/SKILL.md` — tooling detection with read-only preference, classification priority table (7 states), summary table format with Detail column
+- `dependabot-fix/SKILL.md` — single-PR/repo analysis, repair plan proposal, conflict and CI fix execution, knowledge base recording
+- `dependabot-update/SKILL.md` — bulk branch update, dependency-file conflict resolution, summary table (UPDATED/CONFLICTS RESOLVED/NEEDS MANUAL REVIEW/NO ACTION/ERROR)
 
-**Rule**: if logic is used by only one skill, it belongs in that skill. If logic is used by both skills (or is general Dependabot/GitHub domain knowledge), it belongs in the agent.
+**Rule**: if logic is used by only one skill, it belongs in that skill. If logic is used by multiple skills (or is general Dependabot/GitHub domain knowledge), it belongs in the agent.
 
 ### File paths
 
 ```
-agents/dependabot-reviewer.md   ← shared domain knowledge
+agents/dependabot-reviewer.md      ← shared domain knowledge
 skills/dependabot-review/SKILL.md  ← review workflow
 skills/dependabot-verify/SKILL.md  ← verify (read-only) workflow
-.claude-plugin/plugin.json      ← plugin declaration
+skills/dependabot-fix/SKILL.md     ← fix single PR/repo workflow
+skills/dependabot-update/SKILL.md  ← bulk branch update workflow
+.claude-plugin/plugin.json         ← plugin declaration
 ```
 
 ### MCP server (`mcp-server/`)
@@ -80,7 +86,7 @@ Tests: `mcp-server/tests/`
 
 **Approval decision**: lock-only diffs and patch/minor bumps without breaking changelog entries are auto-approved. Major bumps or failing CI always require manual action. Decision table lives in `dependabot-review/SKILL.md`.
 
-**Multi-host processing**: both skills discover all authenticated GitHub hosts via `gh auth status --show-token` and present separate result tables per host.
+**Multi-host processing**: all skills discover all authenticated GitHub hosts via `gh auth status --show-token` and present separate result tables per host.
 
 **dependabot-verify is strictly read-only**: it must never approve, comment, set automerge, update branches, or approve environment deployments.
 
@@ -89,11 +95,12 @@ Tests: `mcp-server/tests/`
 Human-readable documentation lives in `docs/`:
 
 ```
-docs/README.md            ← architecture, multi-host, token flow (directory landing page)
-docs/dependabot-review.md ← /dependabot-review decision tree and status legend
-docs/dependabot-verify.md ← /dependabot-verify decision tree and status legend
-docs/dependabot-fix.md    ← /dependabot-fix decision tree and execution flow
-docs/knowledge-base.md    ← shared KB: format, matching, recording rules
+docs/README.md             ← architecture, multi-host, token flow (directory landing page)
+docs/dependabot-review.md  ← /dependabot-review decision tree and status legend
+docs/dependabot-verify.md  ← /dependabot-verify decision tree and status legend
+docs/dependabot-fix.md     ← /dependabot-fix decision tree and execution flow
+docs/dependabot-update.md  ← /dependabot-update decision tree and status legend
+docs/knowledge-base.md     ← shared KB: format, matching, recording rules
 ```
 
 **After every functional change to a skill or the agent, update the corresponding `docs/` file(s) to reflect the new behaviour.** Specifically:

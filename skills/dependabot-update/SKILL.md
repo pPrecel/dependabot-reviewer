@@ -75,6 +75,10 @@ If `filter_hosts` is non-null (set in Step 0), keep only pairs where the host ap
 `filter_hosts`. Validate: if any host in `filter_hosts` is not present in `gh auth status`
 output, stop with the error described in Step 0. Do not hardcode any host names.
 
+> **Note:** This skill does not load the knowledge base. The conflict resolution rule is
+> mechanical and deterministic — in dependency files the PR branch version always wins.
+> No KB pattern lookup is needed for this decision.
+
 ---
 
 ## Step 2: Discover PRs
@@ -171,8 +175,9 @@ names above. All other files are "other files".
    `"non-dependency conflict in: <comma-separated filenames>"` and continue to next PR.
    Do not commit anything.
 
-5. If **dependency files** is empty (no dependency files had conflicts, only others handled
-   in step 4, or the diff had no conflict markers at all) → record status `⚠️ NEEDS MANUAL REVIEW`
+5. If **dependency files** is empty (the diff contained no `<<<<<<<` markers in any dependency
+   file — this can occur when `merge_state` is `"dirty"` due to binary file conflicts or
+   certain rebase states) → record status `⚠️ NEEDS MANUAL REVIEW`
    with detail `"no resolvable dependency conflicts found"` and continue to next PR.
 
 6. Acquire the PR branch name and HEAD SHA — both are needed for the commit:
