@@ -107,7 +107,18 @@ Process PRs sequentially. For each PR call:
 get_pr_details(host, token, repo=pr.repo, pr_number=pr.number)
 ```
 
-Use the returned data to determine **Path A** or **Path B**.
+---
+
+## Step 3.5: Ensure branch is up to date
+
+**Before** routing to Path A or Path B, check `merge_state`:
+
+- `merge_state == "behind"` → call `update_branch(host, token, repo, pr_number)` immediately. The tool returns `{status, branch_updated, message}`.
+  - `status == "needs_manual_rebase"` → set PR status `🔄 UPDATED`, stop processing this PR.
+  - `status == "done"` → re-fetch PR details: call `get_pr_details(host, token, repo, pr_number)` again to get a fresh snapshot. Continue to Path A / Path B with the refreshed data.
+- `merge_state != "behind"` → skip this step and continue to Path A / Path B.
+
+This step guarantees all subsequent analysis (CI checks, changelog, decision table) runs on an up-to-date branch.
 
 ---
 
@@ -123,8 +134,7 @@ Use the returned data to determine **Path A** or **Path B**.
 
 ## Path A: Already-Handled PR
 
-Check `merge_state` from `get_pr_details` first:
-- `merge_state == "behind"` → call `prepare_merge` immediately (do not check CI first). If result is `"needs_manual_rebase"` → set status `ACTION REQUIRED` with message. If `"done"` → set status `UPDATED`.
+Check `merge_state` from `get_pr_details` first (branch is guaranteed up to date — Step 3.5 handled `"behind"`):
 - `merge_state == "dirty"` → set status `ACTION REQUIRED` (merge conflict, cannot update branch).
 - Otherwise → check `ci_status`:
   - `ci_status == "failing"` → call `post_action_required_comment` (reason: `"failing-ci"`), set status `ACTION REQUIRED`
@@ -158,7 +168,8 @@ This step catches known repo-specific patterns that require manual action even w
 
 ### Step B2: Check merge_state and CI
 
-- `merge_state == "behind"` → call `prepare_merge` immediately (do not check CI or changelog). If result is `"needs_manual_rebase"` → ACTION REQUIRED. If `"done"` → status `UPDATED`, stop.
+Branch is guaranteed up to date — Step 3.5 handled `"behind"`.
+
 - `merge_state == "dirty"` → ACTION REQUIRED (merge conflict).
 - `ci_status == "failing"` → ACTION REQUIRED (even if diff is safe). Before posting the comment, check knowledge base entries for matches on the failing check names and diff classification. If a match is found, include the known root cause and fix steps in the `post_action_required_comment` body.
 
