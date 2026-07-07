@@ -36,18 +36,37 @@ def _repo_from_url(url: str) -> str:
 
 
 @mcp.tool()
-async def list_dependabot_prs(host: str, token: str) -> list[dict]:
+async def list_dependabot_prs(
+    host: str,
+    token: str,
+    org: str | None = None,
+    repo: str | None = None,
+) -> list[dict]:
     """
     List all open Dependabot PRs where the authenticated user (identified by token)
     is a requested reviewer or has already reviewed.
     Returns: list of {number, repo, title, url}
+
+    Optional filters:
+    - repo: restrict to a single repository, e.g. "myorg/myrepo"
+    - org: restrict to all repositories in an org, e.g. "myorg"
+    If both are provided, repo takes precedence.
     """
     client = get_client(host, token)
+
+    # Build scope qualifier: repo takes precedence over org
+    if repo:
+        scope = f" repo:{repo}"
+    elif org:
+        scope = f" org:{org}"
+    else:
+        scope = ""
+
     queries = [
-        f"is:open is:pr author:{author} review-requested:@me"
+        f"is:open is:pr author:{author} review-requested:@me{scope}"
         for author in _BOT_AUTHORS
     ] + [
-        f"is:open is:pr author:{author} reviewed-by:@me"
+        f"is:open is:pr author:{author} reviewed-by:@me{scope}"
         for author in _BOT_AUTHORS
     ]
     results = await asyncio.gather(*[client.search_prs(q) for q in queries], return_exceptions=True)
@@ -56,10 +75,10 @@ async def list_dependabot_prs(host: str, token: str) -> list[dict]:
         if isinstance(items, Exception):
             continue
         for item in items:
-            repo = _repo_from_url(item.get("repository_url", ""))
+            repo_name = _repo_from_url(item.get("repository_url", ""))
             merged.append({
                 "number": item["number"],
-                "repo": repo,
+                "repo": repo_name,
                 "title": item["title"],
                 "url": item["html_url"],
             })

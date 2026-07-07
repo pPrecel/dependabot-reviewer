@@ -168,3 +168,59 @@ async def test_list_recently_merged_dependabot_prs_ghes_uses_plain_author():
     # All queries should use author:dependabot (plain), not author:app/dependabot
     assert all("author:app/" not in q for q in captured_queries)
     assert any("author:dependabot" in q for q in captured_queries)
+
+
+@respx.mock
+async def test_list_dependabot_prs_with_org_filter():
+    """org= adds org:<org> qualifier to all search queries."""
+    captured_queries = []
+
+    def capture(request):
+        captured_queries.append(request.url.params.get("q", ""))
+        return httpx.Response(200, json={"items": []})
+
+    respx.get("https://api.github.com/search/issues").mock(side_effect=capture)
+
+    from dependabot_mcp.server import list_dependabot_prs
+    await list_dependabot_prs(host="github.com", token="tok", org="myorg")
+
+    assert all("org:myorg" in q for q in captured_queries)
+    assert all("repo:" not in q for q in captured_queries)
+
+
+@respx.mock
+async def test_list_dependabot_prs_with_repo_filter():
+    """repo= adds repo:<org>/<repo> qualifier and takes precedence over org=."""
+    captured_queries = []
+
+    def capture(request):
+        captured_queries.append(request.url.params.get("q", ""))
+        return httpx.Response(200, json={"items": []})
+
+    respx.get("https://api.github.com/search/issues").mock(side_effect=capture)
+
+    from dependabot_mcp.server import list_dependabot_prs
+    await list_dependabot_prs(host="github.com", token="tok", org="myorg", repo="myorg/myrepo")
+
+    assert all("repo:myorg/myrepo" in q for q in captured_queries)
+    assert all("org:myorg" not in q for q in captured_queries)
+
+
+@respx.mock
+async def test_list_dependabot_prs_no_filter_unchanged():
+    """Without org or repo, queries are unchanged from before."""
+    captured_queries = []
+
+    def capture(request):
+        captured_queries.append(request.url.params.get("q", ""))
+        return httpx.Response(200, json={"items": []})
+
+    respx.get("https://api.github.com/search/issues").mock(side_effect=capture)
+
+    from dependabot_mcp.server import list_dependabot_prs
+    await list_dependabot_prs(host="github.com", token="tok")
+
+    assert all("org:" not in q for q in captured_queries)
+    assert all("repo:" not in q for q in captured_queries)
+    # All queries include standard Dependabot author qualifiers
+    assert any("author:app/dependabot" in q for q in captured_queries)
