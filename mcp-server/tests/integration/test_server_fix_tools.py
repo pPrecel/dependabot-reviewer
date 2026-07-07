@@ -2,7 +2,7 @@ import pytest
 import respx
 import httpx
 import base64
-from dependabot_mcp.server import get_check_logs, commit_files, post_pr_comment, get_raw_diff, get_file_contents, get_pr_head_sha
+from dependabot_mcp.server import get_check_logs, commit_files, post_pr_comment, get_raw_diff, get_file_contents, get_pr_head_sha, post_action_required_comment
 
 
 @respx.mock
@@ -117,3 +117,91 @@ async def test_get_pr_head_sha_raises_on_missing_sha():
         assert False, "Expected ValueError"
     except ValueError as e:
         assert "no head SHA" in str(e)
+
+
+@respx.mock
+async def test_post_action_required_comment_skips_when_last_comment_identical():
+    """When the last comment body matches the rendered body, skip posting."""
+    from dependabot_mcp.templates import render_template
+    body = render_template(
+        reason="failing-ci",
+        failing_checks=[{"name": "test-unit", "state": "FAILURE"}],
+        library="github.com/foo/bar",
+        old_version="1.0.0",
+        new_version="2.0.0",
+        semver="major",
+        changelog_excerpt=None,
+    )
+
+    # Mock GET comments — returns one comment whose body matches exactly
+    respx.get("https://api.github.com/repos/owner/repo/issues/42/comments").mock(
+        return_value=httpx.Response(200, json=[{"body": body, "user": {"login": "bot"}, "created_at": "2026-01-01T00:00:00Z"}])
+    )
+    # POST must NOT be called — if it is, respx will raise an error (no mock registered)
+
+    result = await post_action_required_comment(
+        host="github.com",
+        token="tok",
+        repo="owner/repo",
+        pr_number=42,
+        reason="failing-ci",
+        library="github.com/foo/bar",
+        old_version="1.0.0",
+        new_version="2.0.0",
+        semver="major",
+        failing_checks=[{"name": "test-unit", "state": "FAILURE"}],
+    )
+    assert result["skipped"] is True
+    assert result["comment_url"] == ""
+
+
+@respx.mock
+async def test_post_action_required_comment_posts_when_last_comment_different():
+    """When the last comment body differs from the rendered body, post normally."""
+    respx.get("https://api.github.com/repos/owner/repo/issues/42/comments").mock(
+        return_value=httpx.Response(200, json=[{"body": "some other comment", "user": {"login": "human"}, "created_at": "2026-01-01T00:00:00Z"}])
+    )
+    respx.post("https://api.github.com/repos/owner/repo/issues/42/comments").mock(
+        return_value=httpx.Response(201, json={"html_url": "https://github.com/owner/repo/issues/42#issuecomment-1"})
+    )
+
+    result = await post_action_required_comment(
+        host="github.com",
+        token="tok",
+        repo="owner/repo",
+        pr_number=42,
+        reason="failing-ci",
+        library="github.com/foo/bar",
+        old_version="1.0.0",
+        new_version="2.0.0",
+        semver="major",
+        failing_checks=[{"name": "test-unit", "state": "FAILURE"}],
+    )
+    assert result["skipped"] is False
+    assert "issuecomment-1" in result["comment_url"]
+
+
+@respx.mock
+async def test_post_action_required_comment_posts_when_no_existing_comments():
+    """When there are no existing comments, always post."""
+    respx.get("https://api.github.com/repos/owner/repo/issues/42/comments").mock(
+        return_value=httpx.Response(200, json=[])
+    )
+    respx.post("https://api.github.com/repos/owner/repo/issues/42/comments").mock(
+        return_value=httpx.Response(201, json={"html_url": "https://github.com/owner/repo/issues/42#issuecomment-2"})
+    )
+
+    result = await post_action_required_comment(
+        host="github.com",
+        token="tok",
+        repo="owner/repo",
+        pr_number=42,
+        reason="failing-ci",
+        library="github.com/foo/bar",
+        old_version="1.0.0",
+        new_version="2.0.0",
+        semver="major",
+        failing_checks=[{"name": "test-unit", "state": "FAILURE"}],
+    )
+    assert result["skipped"] is False
+    assert "issuecomment-2" in result["comment_url"]

@@ -48,7 +48,7 @@ class GithubClient:
         return r.json()
 
     async def get_pr_comments(self, repo: str, number: int) -> list[dict]:
-        r = await self._client.get(f"/repos/{repo}/issues/{number}/comments")
+        r = await self._client.get(f"/repos/{repo}/issues/{number}/comments", params={"per_page": 100})
         r.raise_for_status()
         return r.json()
 

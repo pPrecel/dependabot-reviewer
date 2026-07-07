@@ -57,6 +57,7 @@ class PrepareMergeResult(BaseModel):
 
 class CommentResult(BaseModel):
     comment_url: str
+    skipped: bool = False
 
 
 class CheckLog(BaseModel):

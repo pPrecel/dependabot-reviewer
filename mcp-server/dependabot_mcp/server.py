@@ -293,6 +293,9 @@ async def post_action_required_comment(
         changelog_excerpt=changelog_excerpt,
     )
     client = get_client(host, token)
+    existing = await client.get_pr_comments(repo, pr_number)
+    if existing and existing[-1]["body"] == body:
+        return CommentResult(comment_url="", skipped=True).model_dump()
     result = await client.post_comment(repo, pr_number, body)
     return CommentResult(comment_url=result["html_url"]).model_dump()
 
