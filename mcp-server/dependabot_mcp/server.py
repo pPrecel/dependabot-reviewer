@@ -183,17 +183,6 @@ async def prepare_merge(host: str, token: str, repo: str, pr_number: int, commen
             errors=[],
         ).model_dump()
 
-    if merge_state == "behind":
-        try:
-            await client.update_branch(repo, pr_number)
-            branch_updated = True
-            # Re-fetch PR to get the updated HEAD SHA after branch update,
-            # then wait for GitHub to start new workflow runs before approving envs.
-            await asyncio.sleep(10)
-            pr = await client.get_pr(repo, pr_number)
-        except Exception as e:
-            errors.append(f"update_branch failed: {e}")
-
     # ── Step 2: env deployments ──────────────────────────────────────────
     sha = pr["head"]["sha"]
     checks_r = await client._client.get(
@@ -506,6 +495,12 @@ async def update_branch(host: str, token: str, repo: str, pr_number: int) -> dic
             status="needs_manual_rebase",
             branch_updated=False,
             message="PR has merge conflicts that require manual resolution before merging.",
+        ).model_dump()
+    except Exception as e:
+        return UpdateBranchResult(
+            status="needs_manual_rebase",
+            branch_updated=False,
+            message=f"Branch update failed: {e}",
         ).model_dump()
 
 

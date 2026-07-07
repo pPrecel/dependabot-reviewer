@@ -1,6 +1,7 @@
 import pytest
 import httpx
 from unittest.mock import AsyncMock, MagicMock, patch
+from dependabot_mcp.server import update_branch
 
 
 @pytest.fixture
@@ -16,7 +17,6 @@ async def test_update_branch_done(mock_client):
     mock_client.update_branch.return_value = {"message": "Updating pull request branch."}
 
     with patch("dependabot_mcp.server.get_client", return_value=mock_client):
-        from dependabot_mcp.server import update_branch
         result = await update_branch(
             host="github.com",
             token="tok",
@@ -41,7 +41,6 @@ async def test_update_branch_needs_manual_rebase(mock_client):
     )
 
     with patch("dependabot_mcp.server.get_client", return_value=mock_client):
-        from dependabot_mcp.server import update_branch
         result = await update_branch(
             host="github.com",
             token="tok",
@@ -51,7 +50,7 @@ async def test_update_branch_needs_manual_rebase(mock_client):
 
     assert result["status"] == "needs_manual_rebase"
     assert result["branch_updated"] is False
-    assert "conflict" in result["message"].lower() or "manual" in result["message"].lower()
+    assert result["message"] == "PR has merge conflicts that require manual resolution before merging."
 
 
 @pytest.mark.asyncio
@@ -65,7 +64,6 @@ async def test_update_branch_already_up_to_date(mock_client):
     )
 
     with patch("dependabot_mcp.server.get_client", return_value=mock_client):
-        from dependabot_mcp.server import update_branch
         result = await update_branch(
             host="github.com",
             token="tok",
