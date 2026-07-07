@@ -175,9 +175,20 @@ names above. All other files are "other files".
    in step 4, or the diff had no conflict markers at all) → record status `⚠️ NEEDS MANUAL REVIEW`
    with detail `"no resolvable dependency conflicts found"` and continue to next PR.
 
-6. For each dependency file with conflicts:
-   a. Call `get_file_contents(host, token, repo=pr.repo, path=<file_path>, ref=<pr_branch>)`.
-      The `pr_branch` is obtained from `get_pr_details` result (`head_ref` field).
+6. Acquire the PR branch name and HEAD SHA — both are needed for the commit:
+   ```bash
+   gh api --hostname <host> repos/<repo>/pulls/<pr_number> --jq '.head.ref'
+   ```
+   This returns the branch name (e.g. `dependabot/go_modules/github.com/foo/bar-1.2.3`).
+   Store it as `pr_branch`.
+
+   Also call `get_pr_head_sha(host, token, repo=pr.repo, pr_number=pr.number)` and store
+   the result as `pr_head_sha`.
+   If either call fails → record status `❌ ERROR` with the error message and continue to next PR.
+
+7. For each dependency file with conflicts:
+   a. Call `get_file_contents(host, token, repo=pr.repo, path=<file_path>, ref=<pr_head_sha>)`.
+      Using the SHA as `ref` fetches the file at the exact PR branch tip.
       If this call fails → record status `❌ ERROR` with the error message and continue to next PR.
    b. In the file content, locate all conflict blocks delimited by:
       - `<<<<<<< <anything>` (start of conflict)
@@ -189,9 +200,6 @@ names above. All other files are "other files".
    d. Remove the `<<<<<<< `, `=======`, and `>>>>>>> ` marker lines.
    e. Collect `{path: <file_path>, content: <resolved content>}`.
 
-7. Re-fetch HEAD SHA: `get_pr_head_sha(host, token, repo=pr.repo, pr_number=pr.number)`.
-   If this call fails → record status `❌ ERROR` with the error message and continue to next PR.
-
 8. Call:
    ```
    commit_files(
@@ -201,7 +209,7 @@ names above. All other files are "other files".
      branch=<pr_branch>,
      files=[{path, content}, ...],
      message="fix: resolve merge conflicts [dependabot skip]",
-     head_sha=<sha from step 7>
+     head_sha=<pr_head_sha>
    )
    ```
    - Success → record status `✅ CONFLICTS RESOLVED` with detail
