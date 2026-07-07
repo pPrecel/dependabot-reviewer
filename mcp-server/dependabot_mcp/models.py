@@ -77,3 +77,9 @@ class BranchCiStatus(BaseModel):
     failing_checks: list[dict]   # [{name: str, conclusion: str}]
     total_checks: int
     passing_checks: int
+
+
+class UpdateBranchResult(BaseModel):
+    status: Literal["done", "needs_manual_rebase"]
+    branch_updated: bool
+    message: str
