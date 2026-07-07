@@ -9,6 +9,7 @@ This plugin automates Dependabot and Renovate PR review for Claude Code. It ship
 | [`/dependabot-review`](dependabot-review.md) | `/dependabot-review` | read-write | Review all open PRs: approve, set automerge, update branches, post ACTION REQUIRED comments |
 | [`/dependabot-verify`](dependabot-verify.md) | `/dependabot-verify` | read-only | Report status of all open PRs without taking any write actions |
 | [`/dependabot-fix`](dependabot-fix.md) | `/dependabot-fix <ref>` | read-write | Fix a single PR or repo whose main-branch CI broke after a dependency merge |
+| [`/dependabot-update`](dependabot-update.md) | `/dependabot-update` | read-write | Update all open PR branches: rebase behind branches and resolve dependency-file merge conflicts |
 
 ## Architecture
 
@@ -16,7 +17,7 @@ This plugin automates Dependabot and Renovate PR review for Claude Code. It ship
 ┌─────────────────────────────────────────────────────────┐
 │                     Claude Code session                  │
 │                                                         │
-│  /dependabot-review   /dependabot-verify   /dependabot-fix │
+│  /dependabot-review   /dependabot-verify   /dependabot-fix   /dependabot-update │
 │         │                    │                   │       │
 │         └────────────────────┴───────────────────┘       │
 │                              │                           │
@@ -31,6 +32,7 @@ This plugin automates Dependabot and Renovate PR review for Claude Code. It ship
               │  get_pr_details                   │
               │  get_changelog                    │
               │  prepare_merge                    │
+              │  update_branch                    │
               │  post_action_required_comment     │
               │  get_branch_ci_status             │
               │  get_check_logs                   │
