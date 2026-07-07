@@ -1,7 +1,7 @@
 import pytest
 import respx
 import httpx
-from dependabot_mcp.server import get_branch_ci_status, list_recently_merged_dependabot_prs
+from dependabot_mcp.server import get_branch_ci_status, list_dependabot_prs, list_recently_merged_dependabot_prs
 
 
 @respx.mock
@@ -181,7 +181,6 @@ async def test_list_dependabot_prs_with_org_filter():
 
     respx.get("https://api.github.com/search/issues").mock(side_effect=capture)
 
-    from dependabot_mcp.server import list_dependabot_prs
     await list_dependabot_prs(host="github.com", token="tok", org="myorg")
 
     assert all("org:myorg" in q for q in captured_queries)
@@ -199,7 +198,6 @@ async def test_list_dependabot_prs_with_repo_filter():
 
     respx.get("https://api.github.com/search/issues").mock(side_effect=capture)
 
-    from dependabot_mcp.server import list_dependabot_prs
     await list_dependabot_prs(host="github.com", token="tok", org="myorg", repo="myorg/myrepo")
 
     assert all("repo:myorg/myrepo" in q for q in captured_queries)
@@ -217,10 +215,10 @@ async def test_list_dependabot_prs_no_filter_unchanged():
 
     respx.get("https://api.github.com/search/issues").mock(side_effect=capture)
 
-    from dependabot_mcp.server import list_dependabot_prs
     await list_dependabot_prs(host="github.com", token="tok")
 
     assert all("org:" not in q for q in captured_queries)
     assert all("repo:" not in q for q in captured_queries)
     # All queries include standard Dependabot author qualifiers
     assert any("author:app/dependabot" in q for q in captured_queries)
+    assert any("review-requested:@me" in q for q in captured_queries)
