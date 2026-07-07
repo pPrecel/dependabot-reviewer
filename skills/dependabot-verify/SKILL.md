@@ -4,7 +4,8 @@ description: >
   Read-only scan of all open Dependabot PRs where the current user is a requested reviewer.
   Reports the status of each PR without taking any write actions (no approvals, no comments,
   no automerge, no branch updates).
-  Invoke with: /dependabot-verify
+  Accepts an optional scope argument to limit work to a specific host, org, repo, or PR.
+  Invoke with: /dependabot-verify [host/org/repo:PR]
 ---
 
 # /dependabot-verify

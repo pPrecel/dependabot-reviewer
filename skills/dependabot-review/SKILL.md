@@ -4,7 +4,8 @@ description: >
   Review all open Dependabot PRs across Otters team repositories.
   Automatically approves safe updates, sets automerge, updates branches,
   and leaves analysis comments on PRs that need manual action.
-  Invoke with: /dependabot-review
+  Accepts an optional scope argument to limit work to a specific host, org, repo, or PR.
+  Invoke with: /dependabot-review [host/org/repo:PR]
 ---
 
 # /dependabot-review
