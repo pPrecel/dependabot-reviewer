@@ -38,7 +38,7 @@ Supported formats — apply the **first matching rule**:
 | 3 | Argument starts with a known host token followed by `org/repo` | explicit host + repo ref |
 | 4 | Argument matches `org/repo#N` (no host prefix) | default host + PR ref |
 | 5 | Argument matches `org/repo` (no host prefix, no `#`) | default host + repo ref |
-| 6 | Argument is empty or not parseable | Ask once: `"Podaj PR lub repo do naprawy (np. org/repo#123 lub https://github.com/org/repo/pull/123):"`. If the reply still does not match any rule above, print an error and stop. |
+| 6 | Argument is empty or not parseable | Ask once: `"Provide a PR or repo to fix (e.g. org/repo#123 or https://github.com/org/repo/pull/123):"`. If the reply still does not match any rule above, print an error and stop. |
 
 ### 1b: Resolve host and acquire token
 
@@ -133,13 +133,13 @@ Present the analysis result and a concrete repair plan. **Do not make any change
                create patch branch + open PR | post diagnostic comment (infra issue)>
 **Files to change:** <comma-separated list, or "none (diagnostic comment only)">
 
-Czy wykonać? (tak / nie / uwagi)
+Proceed? (yes / no / feedback)
 ```
 
 ### Response handling
 
 - `tak`, `yes`, or empty reply → proceed to Step 5
-- `nie` or `no` → stop without any changes; print "Anulowano — żadnych zmian nie wprowadzono."
+- `nie` or `no` → stop without any changes; print "Cancelled — no changes were made."
 - Any other text → treat as refinement feedback: update the plan accordingly and present
   the revised plan again with the same question. Repeat until `tak`/`nie`.
 

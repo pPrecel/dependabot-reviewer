@@ -83,3 +83,21 @@ Tests: `mcp-server/tests/`
 **Multi-host processing**: both skills discover all authenticated GitHub hosts via `gh auth status --show-token` and present separate result tables per host.
 
 **dependabot-verify is strictly read-only**: it must never approve, comment, set automerge, update branches, or approve environment deployments.
+
+## Documentation
+
+Human-readable documentation lives in `docs/`:
+
+```
+docs/README.md            ← architecture, multi-host, token flow (directory landing page)
+docs/dependabot-review.md ← /dependabot-review decision tree and status legend
+docs/dependabot-verify.md ← /dependabot-verify decision tree and status legend
+docs/dependabot-fix.md    ← /dependabot-fix decision tree and execution flow
+docs/knowledge-base.md    ← shared KB: format, matching, recording rules
+```
+
+**After every functional change to a skill or the agent, update the corresponding `docs/` file(s) to reflect the new behaviour.** Specifically:
+- Changed routing logic or decision table → update the decision tree diagram
+- Added/removed MCP tool → update overview.md and the relevant skill doc
+- Changed status values or comment templates → update the status legend
+- Changed knowledge base format or matching rules → update knowledge-base.md
