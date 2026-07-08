@@ -36,15 +36,15 @@ Scans the same set of PRs and reports their current status without taking any wr
 
 See [docs/dependabot-verify.md](docs/dependabot-verify.md) for the classification table and status legend.
 
-### Fix a single PR (read-write)
+### Fix PRs with active problems (read-write)
 
 ```
-/dependabot-fix [host] <ref>
+/dependabot-fix [host/org/repo:PR]
 ```
 
-Analyses a single PR (or a repository whose main-branch CI broke after merging a Dependabot PR), proposes a repair plan, and executes it after your confirmation.
+Finds Dependabot / ospo-renovate PRs with merge conflicts or failing CI. For each problem PR it analyses the root cause, proposes a concrete repair plan, and executes it after your confirmation. Without an argument it scans all open PRs where you are a requested reviewer; a scope argument limits work to a specific host, org, repo, or single PR.
 
-See [docs/dependabot-fix.md](docs/dependabot-fix.md) for the analysis flow and supported fix types.
+See [docs/dependabot-fix.md](docs/dependabot-fix.md) for the full decision tree and result legend.
 
 ### Update branches (read-write)
 
