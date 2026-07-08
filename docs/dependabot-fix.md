@@ -5,57 +5,78 @@ Fixes a single Dependabot or Renovate problem — either a PR in ACTION REQUIRED
 ## Invocation
 
 ```
-/dependabot-fix [host] <ref>
+/dependabot-fix [host/org/repo:PR]
 ```
 
-Supported `<ref>` formats:
+Without an argument, processes all open PRs where you are a requested reviewer.
 
-| Format | Example |
-|--------|---------|
-| Full URL (PR) | `https://github.com/org/repo/pull/123` |
-| Full URL (repo) | `https://github.com/org/repo` |
-| Explicit host + PR | `github.tools.sap org/repo#123` |
-| Explicit host + repo | `github.tools.sap org/repo` |
-| Default host PR | `org/repo#123` |
-| Default host repo | `org/repo` |
+| Input | Scope |
+|-------|-------|
+| *(empty)* | all authenticated hosts |
+| `<host>` | single host |
+| `<org>` | single org across default host |
+| `<host>/<org>` | single org on specified host |
+| `org/repo` | single repo |
+| `<host>/org/repo` | single repo on specified host |
+| `org/repo:PR` or `org/repo#PR` | single PR (single mode) |
+| Full URL | single PR or repo (host extracted from domain) |
 
-Default host is `github.com`.
+Default host is `github.com`. Single mode is triggered only when a PR number is provided.
 
 ## Decision Tree
 
 ```
-parse argument → {host, target_type, repo, [pr_number]}
-acquire token via: gh auth status --show-token
+parse argument → {filter_hosts, filter_repo, filter_pr, filter_org, target_type}
+acquire tokens via: gh auth status --show-token
 load knowledge base from ~/.claude/dependabot-fix-knowledge/
 │
-├── target_type == "pr"
-│   │
-│   ├── get_pr_details()
-│   │
-│   ├── merge_state == "dirty"?  → merge conflict present
-│   ├── ci_status == "failing"?  → failing CI present
-│   │
-│   ├── both problems → address conflict first, then CI
-│   ├── neither       → "no active problem detected" → skip to proposal
-│   │
-│   ├── [if CI failing] get_check_logs() for each failing check
-│   ├── [if conflict]   get_raw_diff() → find <<<<<<< markers
-│   │
-│   └── match against KB entries
+├── target_type == "pr" → SINGLE MODE (specific PR)
+│   └── [proceed to PR analysis below]
 │
-└── target_type == "repo"
+├── target_type == "repo" → SINGLE MODE (repo main branch)
+│   └── [proceed to repo analysis below]
+│
+└── target_type == "bulk" → BULK MODE
     │
-    ├── get_branch_ci_status(branch="main")
-    │   └── 404 → retry with "master"
+    ├── list_dependabot_prs() with applicable scope filter
+    │   └── empty list → "No open Dependabot PRs matching the given filter." → stop
     │
-    ├── ci_status != "failing" → "Main branch CI is not failing" → stop
+    └── for each PR:
+        ├── get_pr_details()
+        ├── merge_state != "dirty" AND ci_status != "failing" → skip silently
+        └── proceed to PR analysis below
+            └── after Step 7 → record result → continue to next PR
     │
-    ├── get_check_logs() for each failing check
-    ├── list_recently_merged_dependabot_prs(since = today - 14 days)
-    │   └── correlate merge timestamps with first CI failure
-    │
-    └── match against KB entries
-        └── root cause NOT from dependency update? → scope check error → stop
+    └── print summary table
+
+── PR analysis ─────────────────────────────────────────────────────────────
+
+├── get_pr_details()
+│
+├── merge_state == "dirty"?  → merge conflict present
+├── ci_status == "failing"?  → failing CI present
+│
+├── both problems → address conflict first, then CI
+├── neither       → "no active problem detected" → skip to proposal
+│
+├── [if CI failing] get_check_logs() for each failing check
+├── [if conflict]   get_raw_diff() → find <<<<<<< markers
+│
+└── match against KB entries
+
+── Repo analysis (target_type == "repo", single mode only) ─────────────────
+
+├── get_branch_ci_status(branch="main")
+│   └── 404 → retry with "master"
+│
+├── ci_status != "failing" → "Main branch CI is not failing" → stop
+│
+├── get_check_logs() for each failing check
+├── list_recently_merged_dependabot_prs(since = today - 14 days)
+│   └── correlate merge timestamps with first CI failure
+│
+└── match against KB entries
+    └── root cause NOT from dependency update? → scope check error → stop
 ```
 
 ## Repair Approach Selection
@@ -90,6 +111,26 @@ load knowledge base from ~/.claude/dependabot-fix-knowledge/
     ├── commit_files(branch="fix/dependabot-ci-<desc>")  ← creates new branch
     └── create_pull_request(head="fix/...", base="main")
 ```
+
+## Summary Table (bulk mode only)
+
+Printed after all PRs are processed:
+
+```
+| Repo | PR | Title | Status | Detail |
+|------|----|-------|--------|--------|
+| org/repo | [#123](url) | Bump foo 1.0→2.0 | ✅ FIXED | <commit_url> |
+| org/repo | [#456](url) | Bump bar 3.1→3.2 | ⏭️ SKIPPED (user) | |
+| org/repo | [#789](url) | Bump baz 0.1→0.2 | ❌ FAILED | Step 6d: file not found |
+| org/repo | [#101](url) | Bump qux 5.0→6.0 | 💬 DIAGNOSTIC COMMENT | <comment_url> |
+```
+
+| Status | Meaning |
+|--------|---------|
+| `✅ FIXED` | Repair executed successfully |
+| `⏭️ SKIPPED (user)` | User replied `no` to confirmation prompt |
+| `❌ FAILED` | Step 6d triggered and not resolved |
+| `💬 DIAGNOSTIC COMMENT` | Infrastructure problem; diagnostic comment posted |
 
 ## Branch Creation Note
 
