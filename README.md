@@ -1,6 +1,6 @@
 # dependabot-reviewer
 
-A Claude Code plugin that reviews open Dependabot and ospo-renovate PRs where you are a requested reviewer, across all GitHub hosts you are authenticated with via `gh`.
+A Claude Code plugin that automates Dependabot and ospo-renovate PR review across all GitHub hosts you are authenticated with via `gh`. It approves safe updates, flags breaking changes, resolves merge conflicts, and keeps you informed — all without manual triage.
 
 ## Prerequisites
 
@@ -24,6 +24,8 @@ claude plugin install dependabot-reviewer@dependabot-reviewer
 
 Processes all open Dependabot / ospo-renovate PRs where you are a requested reviewer. For each PR it approves safe updates, sets automerge, updates branches, and leaves action-required comments on PRs that need manual attention. Prints a summary table at the end.
 
+See [docs/dependabot-review.md](docs/dependabot-review.md) for the full decision tree and status legend.
+
 ### Verify PR status (read-only)
 
 ```
@@ -32,15 +34,30 @@ Processes all open Dependabot / ospo-renovate PRs where you are a requested revi
 
 Scans the same set of PRs and reports their current status without taking any write actions. Useful for a quick overview before running `/dependabot-review`.
 
+See [docs/dependabot-verify.md](docs/dependabot-verify.md) for the classification table and status legend.
+
+### Fix a single PR (read-write)
+
+```
+/dependabot-fix [host] <ref>
+```
+
+Analyses a single PR (or a repository whose main-branch CI broke after merging a Dependabot PR), proposes a repair plan, and executes it after your confirmation.
+
+See [docs/dependabot-fix.md](docs/dependabot-fix.md) for the analysis flow and supported fix types.
+
+### Update branches (read-write)
+
+```
+/dependabot-update [host/org/repo:PR]
+```
+
+Bulk branch updater: updates all branches that are behind their base and resolves dependency-file merge conflicts (e.g. `go.mod`, `package-lock.json`). Does not approve PRs or post comments. Accepts an optional scope argument to limit work to a specific host, org, repo, or PR.
+
+See [docs/dependabot-update.md](docs/dependabot-update.md) for the status legend and conflict resolution details.
+
 ## How it works
 
-The plugin discovers all open PRs authored by `app/dependabot` or `app/ospo-renovate` where you are a requested reviewer, across every GitHub host you are authenticated with (`gh auth status`). This covers both github.com and GitHub Enterprise Server instances.
+The plugin discovers authenticated GitHub hosts via `gh auth status`, then queries each host for open PRs authored by `app/dependabot` or `app/ospo-renovate` where you are a requested reviewer — covering both github.com and GitHub Enterprise Server instances. All GitHub I/O is handled by the bundled `dependabot-reviewer` MCP server, which exposes tools such as `list_dependabot_prs`, `get_pr_details`, `prepare_merge`, and `post_action_required_comment`. The skills orchestrate these tools autonomously and report results in a summary table.
 
-For each PR `/dependabot-review`:
-
-- **approves** and enables automerge for safe updates (lock-only changes, patch/minor bumps with passing CI and no breaking changes in the changelog)
-- **updates the branch** if it's behind the base branch, then waits for GitHub to start new CI runs before processing environment approvals
-- **approves environment deployments** that are gating CI runs on the updated branch
-- **flags** PRs that require manual action — major version bumps, breaking changes in the changelog, or failing CI — and leaves an explanatory comment with details
-
-`/dependabot-verify` classifies each PR into one of: `✅ READY`, `⚠️ ACTION REQUIRED`, `🔄 NEEDS BRANCH UPDATE`, `⏳ WAITING FOR CI`, `👀 NEEDS REVIEW`, or `❌ ERROR`.
+See [docs/README.md](docs/README.md) for a full architecture overview.
