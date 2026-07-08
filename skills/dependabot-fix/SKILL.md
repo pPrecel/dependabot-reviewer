@@ -91,29 +91,96 @@ Read `~/.claude/dependabot-fix-knowledge/index.md`.
 If the file does not exist, proceed without — no error.
 
 For each entry listed in the index, read the full entry file. Keep all entries in memory
-for use during analysis and fix planning in Steps 3 and 4.
+for use during analysis and fix planning in Steps 4 and 5.
 
 ---
 
-## Step 3: Analyse (autonomous — no user interaction)
+## Step 3: Discover PRs and determine execution mode
+
+### 3a: Route by target_type
+
+If `target_type == "pr"` → **single mode**:
+- Skip PR discovery entirely
+- Set `current_pr = {number: filter_pr, repo: filter_repo, host: <first host from Step 1>, token: <matching token>}`
+- Jump directly to Step 4 (Analyse) with `current_pr`
+
+If `target_type == "repo"` → **repo mode**:
+- Skip PR discovery entirely
+- Set `current_repo = {repo: filter_repo, host: <first host from Step 1>, token: <matching token>}`
+- Jump directly to Step 4 (Analyse) with `current_repo`
+
+### 3b: Discover PRs for bulk mode (target_type == "bulk")
+
+For each `{host, token}` pair from Step 1, apply the following routing:
+
+```
+if filter_repo is not null:
+    prs = list_dependabot_prs(host, token, repo=filter_repo)
+elif filter_org is not null:
+    prs = list_dependabot_prs(host, token, org=filter_org)
+else:
+    prs = list_dependabot_prs(host, token)
+```
+
+Collect results into one list per host. Each item: `{number, repo, title, url, host, token}`.
+
+If the combined list across all hosts is empty, print:
+`No open Dependabot PRs matching the given filter.`
+and stop.
+
+### 3c: Bulk processing loop
+
+Initialise an empty `results` list.
+
+For each PR in the combined list, sequentially:
+
+1. Call `get_pr_details(host, token, repo=pr.repo, pr_number=pr.number)`
+2. If `merge_state != "dirty"` AND `ci_status != "failing"` → skip silently (do not add to `results`)
+3. Otherwise → set `current_pr = pr` and proceed to Step 4 (Analyse) for this PR
+4. After Step 7 (Post-execution) completes for this PR, record the outcome in `results`:
+   - Fix executed successfully → `{pr, result: "✅ FIXED"}`
+   - User replied `no` to confirmation → `{pr, result: "⏭️ SKIPPED (user)"}`
+   - Step 6d triggered and not resolved → `{pr, result: "❌ FAILED"}`
+   - Diagnostic comment posted (Step 7c) → `{pr, result: "💬 DIAGNOSTIC COMMENT"}`
+5. Continue to next PR
+
+### 3d: Summary table (bulk mode only)
+
+After the loop completes, print:
+
+```
+## Summary
+
+| Repo | PR | Title | Result |
+|------|----|-------|--------|
+| <pr.repo> | #<pr.number> | <pr.title> | <result> |
+...
+```
+
+If `results` is empty (all PRs were skipped silently), print:
+`No PRs with active problems found.`
+
+---
+
+## Step 4: Analyse (autonomous — no user interaction)
 
 Run the analysis that matches `target_type`.
 
-### 3a: PR analysis (`target_type == "pr"`)
+### 4a: PR analysis (`target_type == "pr"`)
 
 1. Call `get_pr_details(host, token, repo, pr_number)`.
 2. Determine problem types present:
    - `merge_state == "dirty"` → **merge conflict**
    - `ci_status == "failing"` → **failing CI**
    - Both → both problems; conflict will be addressed first
-   - Neither → note "no active problem detected (stale ACTION REQUIRED comment?)" and skip to Step 4 directly
+   - Neither → note "no active problem detected (stale ACTION REQUIRED comment?)" and skip to Step 5 directly
 3. If **failing CI**: for each entry in `failing_checks`, call
    `get_check_logs(host, token, repo, check_run_id=<id>)` and read the returned log file.
 4. If **merge conflict**: call `get_raw_diff(host, token, repo, pr_number)` and identify
    files containing `<<<<<<<` conflict markers.
 5. Match findings against knowledge base entries loaded in Step 2.
 
-### 3b: Repo/branch analysis (`target_type == "repo"`)
+### 4b: Repo/branch analysis (`target_type == "repo"`)
 
 1. Call `get_branch_ci_status(host, token, repo, branch="main")`.
    - If 404 → retry with `branch="master"`.
@@ -125,7 +192,7 @@ Run the analysis that matches `target_type`.
    by correlating merge timestamps with the first failing CI run.
 5. Match findings against knowledge base entries.
 
-### 3c: Scope check
+### 4c: Scope check
 
 If the root cause does not appear to be a Dependabot or Renovate dependency update
 (e.g. the failure predates any recent dependency merges, or the logs point to unrelated
@@ -135,7 +202,7 @@ infrastructure), state this clearly and stop:
 
 ---
 
-## Step 4: Propose repair plan and wait for confirmation
+## Step 5: Propose repair plan and wait for confirmation
 
 Present the analysis result and a concrete repair plan. **Do not make any changes yet.**
 
@@ -162,7 +229,7 @@ Proceed? (yes / no / feedback)
 
 ### Response handling
 
-- `tak`, `yes`, or empty reply → proceed to Step 5
+- `tak`, `yes`, or empty reply → proceed to Step 6
 - `nie` or `no` → stop without any changes; print "Cancelled — no changes were made."
 - Any other text → treat as refinement feedback: update the plan accordingly and present
   the revised plan again with the same question. Repeat until `tak`/`nie`.
@@ -181,12 +248,12 @@ Choose the approach based on problem type:
 
 ---
 
-## Step 5: Execute
+## Step 6: Execute
 
 Execute the approved plan. Log each completed action internally (used in the success
 comment and in unexpected-situation messages).
 
-### 5a: Fix merge conflict (if applicable)
+### 6a: Fix merge conflict (if applicable)
 
 1. For each conflicted file, fetch content from the PR branch:
    `get_file_contents(host, token, repo, path=<path>, ref=<pr_branch>)`
@@ -204,9 +271,9 @@ comment and in unexpected-situation messages).
      message="fix: resolve merge conflicts [dependabot skip]",
      head_sha=<sha>)
    ```
-5. If conflict cannot be resolved without understanding business logic → go to Step 5d.
+5. If conflict cannot be resolved without understanding business logic → go to Step 6d.
 
-### 5b: Fix failing CI (if applicable)
+### 6b: Fix failing CI (if applicable)
 
 1. Fetch the relevant source files identified during analysis:
    `get_file_contents(host, token, repo, path=<path>, ref=<pr_branch>)`
@@ -222,9 +289,9 @@ comment and in unexpected-situation messages).
      head_sha=<sha>)
    ```
 
-### 5c: Create patch branch + PR (main branch case)
+### 6c: Create patch branch + PR (main branch case)
 
-1. Determine base branch name (`main` or `master` — whichever responded in Step 3b).
+1. Determine base branch name (`main` or `master` — whichever responded in Step 4b).
 2. Fetch HEAD SHA of the base branch:
    ```
    get_branch_head_sha(host, token, repo, branch=<base_branch>)
@@ -248,7 +315,7 @@ comment and in unexpected-situation messages).
      body="Automated fix for CI failure introduced by a Dependabot/Renovate merge.")
    ```
 
-### 5d: Unexpected situation — pause and ask
+### 6d: Unexpected situation — pause and ask
 
 Stop autonomous execution and return to the user when:
 - A file to be modified does not exist on the PR branch
@@ -271,13 +338,13 @@ Present:
 What should I do?
 ```
 
-Wait for user response and act accordingly. Option 3 triggers Step 6c (diagnostic comment).
+Wait for user response and act accordingly. Option 3 triggers Step 7c (diagnostic comment).
 
 ---
 
-## Step 6: Post-execution
+## Step 7: Post-execution
 
-### 6a: Success comment
+### 7a: Success comment
 
 Post a comment on the PR (or the newly created PR for the main-branch case):
 
@@ -294,7 +361,7 @@ Automatic fix applied ✅
 
 For the main-branch case, print the new PR URL to the user as well.
 
-### 6b: Knowledge base update
+### 7b: Knowledge base update
 
 Evaluate whether the fix is generic enough to be reused in another repo:
 
@@ -348,9 +415,9 @@ Append one line to the index:
 - [<NNN> <title>](entries/<filename>) — <problem_type>: <trigger_pattern>
 ```
 
-### 6c: Diagnostic comment (infrastructure / unfixable case)
+### 7c: Diagnostic comment (infrastructure / unfixable case)
 
-When the problem cannot be fixed with code (infrastructure issue, or Step 5d option 3):
+When the problem cannot be fixed with code (infrastructure issue, or Step 6d option 3):
 
 ```
 post_pr_comment(host, token, repo, pr_number, body="""
