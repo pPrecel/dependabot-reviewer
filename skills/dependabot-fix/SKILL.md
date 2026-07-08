@@ -30,7 +30,7 @@ variables used throughout the rest of the workflow:
 | `filter_hosts` | `[string] \| null` | hosts to process; `null` = all authenticated hosts |
 | `filter_repo` | `"org/repo" \| null` | exact repo to scope to |
 | `filter_pr` | `int \| null` | single PR number; requires `filter_repo` |
-| `target_type` | `"pr" \| "repo" \| "bulk"` | execution mode derived from parsed argument |
+| `target_type` | `"pr" \| "repo" \| "bulk"` | `"pr" | "repo" | "bulk"` — see derivation below |
 
 Also derive:
 
@@ -166,6 +166,9 @@ If `results` is empty (all PRs were skipped silently), print:
 
 ## Step 4: Analyse (autonomous — no user interaction)
 
+> **In bulk mode** (`target_type == "bulk"`): each PR is processed using `### 4a` below.
+> The `target_type` variable retains its value `"bulk"` throughout the loop — use `4a` logic for all PRs discovered in Step 3b.
+
 Run the analysis that matches `target_type`.
 
 ### 4a: PR analysis (`target_type == "pr"`)
@@ -300,7 +303,14 @@ comment and in unexpected-situation messages).
    ```
    get_branch_head_sha(host, token, repo, branch=<base_branch>)
    ```
-3. Apply fixes to files, then commit to a new branch:
+3. Pre-create the new branch via REST (required — `commit_files` does NOT auto-create branches):
+   ```bash
+   gh api --hostname <host> \
+     -X POST repos/<org>/<repo>/git/refs \
+     -f ref="refs/heads/fix/dependabot-ci-<short-description>" \
+     -f sha="<base_branch_sha>"
+   ```
+4. Apply fixes to files, then commit to the new branch:
    ```
    commit_files(host, token, repo,
      branch="fix/dependabot-ci-<short-description>",
@@ -308,9 +318,7 @@ comment and in unexpected-situation messages).
      message="fix: restore CI after dependency update [dependabot skip]",
      head_sha=<base_branch_sha>)
    ```
-   `commit_files` creates the branch automatically when the branch name is new
-   and `head_sha` points to an existing commit.
-4. Open PR:
+5. Open PR:
    ```
    create_pull_request(host, token, repo,
      title="fix: restore CI after dependency update",

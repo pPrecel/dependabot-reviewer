@@ -1,6 +1,6 @@
 # /dependabot-fix — Decision Flow
 
-Fixes a single Dependabot or Renovate problem — either a PR in ACTION REQUIRED state or a repository whose main-branch CI broke after merging a dependency update.
+Fixes Dependabot and Renovate PRs with active problems (merge conflicts or failing CI). Without an argument, processes all open PRs where you are a requested reviewer. With a scope argument, limits work to a specific host, org, repo, or single PR.
 
 ## Invocation
 
@@ -46,7 +46,7 @@ load knowledge base from ~/.claude/dependabot-fix-knowledge/
         ├── merge_state != "dirty" AND ci_status != "failing" → skip silently
         └── proceed to PR analysis below
             └── after Step 7 → record result → continue to next PR
-    └── print summary table
+└── print summary table
 
 ── PR analysis ─────────────────────────────────────────────────────────────
 
