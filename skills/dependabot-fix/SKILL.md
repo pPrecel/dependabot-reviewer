@@ -5,7 +5,8 @@ description: >
   Without an argument, processes all open PRs where you are a requested reviewer.
   With a scope argument, limits work to the specified host, org, repo, or single PR.
   Runs analysis autonomously, then proposes a repair plan and waits for user confirmation before making any changes.
-  Invoke with: /dependabot-fix [host/org/repo:PR]
+  Pass --yes (or -y) to skip all confirmation prompts and run fully autonomously.
+  Invoke with: /dependabot-fix [--yes] [host/org/repo:PR]
 ---
 
 # /dependabot-fix
@@ -27,6 +28,7 @@ variables used throughout the rest of the workflow:
 
 | Variable | Type | Description |
 |----------|------|-------------|
+| `auto_confirm` | `bool` | `true` if `--yes` or `-y` present in `ARGUMENTS`; `false` by default |
 | `filter_hosts` | `[string] \| null` | hosts to process; `null` = all authenticated hosts |
 | `filter_repo` | `"org/repo" \| null` | exact repo to scope to |
 | `filter_pr` | `int \| null` | single PR number; requires `filter_repo` |
@@ -39,6 +41,15 @@ Also derive:
   - `"pr"` — when `filter_pr` is not null (a specific PR was given)
   - `"repo"` — when `filter_pr` is null and `filter_repo` is not null (a repo was given, bulk-mode repo analysis)
   - `"bulk"` — when both `filter_pr` and `filter_repo` are null (process all PRs in scope)
+
+### Pre-parse: detect `--yes` / `-y` flag
+
+Before applying the parsing rules below, scan `ARGUMENTS` for `--yes` or `-y` (anywhere in the string, case-insensitive):
+
+- If found: set `auto_confirm = true` and remove the flag token from `ARGUMENTS` before continuing
+- If not found: set `auto_confirm = false`
+
+This stripping must happen first so the scope parser does not misinterpret `--yes` as a host or org name.
 
 ### Parsing rules (first match wins)
 
@@ -232,6 +243,16 @@ Present the analysis result and a concrete repair plan. **Do not make any change
 Proceed? (yes / no / feedback)
 ```
 
+### Auto-confirm mode
+
+If `auto_confirm = true`:
+- Display the repair plan (the `## Analysis:` block above) as usual
+- Do **not** show the `Proceed? (yes / no / feedback)` prompt
+- Print: `Auto-confirming repair plan (--yes flag set).`
+- Proceed immediately to Step 6
+
+If `auto_confirm = false`: use the response handling below.
+
 ### Response handling
 
 - `tak`, `yes`, or empty reply → proceed to Step 6
@@ -334,6 +355,17 @@ Stop autonomous execution and return to the user when:
 - A conflict cannot be resolved without business logic knowledge
 - `commit_files` returns an error (e.g. stale HEAD SHA)
 - The knowledge-base fix does not apply cleanly to the current file version
+
+### Auto-handle mode
+
+If `auto_confirm = true`:
+- Do **not** show the options prompt
+- Print: `Unexpected situation encountered (--yes flag set) — posting diagnostic comment and continuing.`
+- Automatically execute option 3: go to Step 7c (diagnostic comment)
+- In **bulk mode**: after posting the comment, record `{pr, status: "💬 DIAGNOSTIC COMMENT", detail: <comment_url>}` in `results` and continue to the next PR
+- In **single mode**: after posting the comment, stop
+
+If `auto_confirm = false`: use the prompt below.
 
 Present:
 
