@@ -4,49 +4,49 @@ This plugin automates Dependabot and Renovate PR review for Claude Code. It ship
 
 ## Skills
 
-| Skill                                        | Invocation                         | Access     | Purpose                                                                                         |
-|----------------------------------------------|------------------------------------|------------|-------------------------------------------------------------------------------------------------|
-| [`/dependabot-review`](dependabot-review.md) | `/dependabot-review [scope]`       | read-write | Review all open PRs: approve, set automerge, update branches, post ACTION REQUIRED comments     |
-| [`/dependabot-verify`](dependabot-verify.md) | `/dependabot-verify [scope]`       | read-only  | Report status of all open PRs without taking any write actions                                  |
-| [`/dependabot-fix`](dependabot-fix.md)       | `/dependabot-fix [--yes] [scope]`  | read-write | Fix PRs or repos with merge conflicts or failing CI; bulk or single mode                        |
-| [`/dependabot-update`](dependabot-update.md) | `/dependabot-update [scope]`       | read-write | Update all open PR branches: rebase behind branches and resolve dependency-file merge conflicts |
+| Skill                                        | Invocation                        | Access     | Purpose                                                                                         |
+| -------------------------------------------- | --------------------------------- | ---------- | ----------------------------------------------------------------------------------------------- |
+| [`/dependabot-review`](dependabot-review.md) | `/dependabot-review [scope]`      | read-write | Review all open PRs: approve, set automerge, update branches, post ACTION REQUIRED comments     |
+| [`/dependabot-verify`](dependabot-verify.md) | `/dependabot-verify [scope]`      | read-only  | Report status of all open PRs without taking any write actions                                  |
+| [`/dependabot-fix`](dependabot-fix.md)       | `/dependabot-fix [--yes] [scope]` | read-write | Fix PRs or repos with merge conflicts or failing CI; bulk or single mode                        |
+| [`/dependabot-update`](dependabot-update.md) | `/dependabot-update [scope]`      | read-write | Update all open PR branches: rebase behind branches and resolve dependency-file merge conflicts |
 
 ## Architecture
 
 ```
-┌─────────────────────────────────────────────────────────┐
-│                     Claude Code session                  │
-│                                                         │
-│  /dependabot-review   /dependabot-verify   /dependabot-fix   /dependabot-update │
-│         │                    │                   │       │
-│         └────────────────────┴───────────────────┘       │
-│                              │                           │
-│                    MCP server calls                      │
-└──────────────────────────────┼──────────────────────────┘
-                               │
-              ┌────────────────▼────────────────┐
-              │   dependabot-reviewer MCP server  │
-              │   (Python, mcp-server/)           │
-              │                                   │
-              │  list_dependabot_prs              │
-              │  get_pr_details                   │
-              │  get_changelog                    │
-              │  prepare_merge                    │
-              │  update_branch                    │
-              │  post_action_required_comment     │
-              │  get_branch_ci_status             │
-              │  get_check_logs                   │
-              │  list_recently_merged_...         │
-              │  commit_files                     │
-              │  create_pull_request              │
-              │  get_branch_head_sha              │
-              │  get_file_contents                │
-              │  get_pr_head_sha                  │
-              │  get_raw_diff                     │
-              └──────────────────────────────────┘
-                               │
-                     GitHub API (REST + GraphQL)
-                  github.com, github.tools.sap, ...
+┌──────────────────────────────────────────────────────────────────────────────┐
+│                           Claude Code session                                │
+│                                                                              │
+│  /dependabot-review  /dependabot-verify  /dependabot-fix  /dependabot-update │
+│         │                   │                  │                  │          │
+│         └───────────────────┴──────────────────┴──────────────────┘          │
+│                                      │                                       │
+│                              MCP server calls                                │
+└──────────────────────────────────────┬───────────────────────────────────────┘
+                                       │
+               ┌───────────────────────▼───────────────────────┐
+               │        dependabot-reviewer MCP server         │
+               │        (Python, mcp-server/)                  │
+               │                                               │
+               │  list_dependabot_prs                          │
+               │  get_pr_details                               │
+               │  get_changelog                                │
+               │  prepare_merge                                │
+               │  update_branch                                │
+               │  post_action_required_comment                 │
+               │  get_branch_ci_status                         │
+               │  get_check_logs                               │
+               │  list_recently_merged_dependabot_prs          │
+               │  commit_files                                 │
+               │  create_pull_request                          │
+               │  get_branch_head_sha                          │
+               │  get_file_contents                            │
+               │  get_pr_head_sha                              │
+               │  get_raw_diff                                 │
+               └───────────────────────────────────────────────┘
+                                       │
+                         GitHub API (REST + GraphQL)
+                      github.com, github.tools.sap, ...
 ```
 
 ## Shared Knowledge Base (Cache)
