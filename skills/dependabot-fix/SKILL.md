@@ -23,8 +23,18 @@ is not present, stop and report an error.
 
 ## Step 0: Parse arguments
 
-Parse `ARGUMENTS` (the text after the skill name) before doing anything else. Produce three
-variables used throughout the rest of the workflow:
+Parse `ARGUMENTS` (the text after the skill name) before doing anything else.
+
+### Pre-parse: detect `--yes` / `-y` flag
+
+Before applying the parsing rules below, scan `ARGUMENTS` for `--yes` or `-y` (anywhere in the string):
+
+- If found: set `auto_confirm = true` and remove the flag token from `ARGUMENTS` before continuing
+- If not found: set `auto_confirm = false`
+
+This stripping must happen first so the scope parser does not misinterpret `--yes` as a host or org name.
+
+Produce three variables used throughout the rest of the workflow:
 
 | Variable | Type | Description |
 |----------|------|-------------|
@@ -41,15 +51,6 @@ Also derive:
   - `"pr"` — when `filter_pr` is not null (a specific PR was given)
   - `"repo"` — when `filter_pr` is null and `filter_repo` is not null (a repo was given, bulk-mode repo analysis)
   - `"bulk"` — when both `filter_pr` and `filter_repo` are null (process all PRs in scope)
-
-### Pre-parse: detect `--yes` / `-y` flag
-
-Before applying the parsing rules below, scan `ARGUMENTS` for `--yes` or `-y` (anywhere in the string, case-insensitive):
-
-- If found: set `auto_confirm = true` and remove the flag token from `ARGUMENTS` before continuing
-- If not found: set `auto_confirm = false`
-
-This stripping must happen first so the scope parser does not misinterpret `--yes` as a host or org name.
 
 ### Parsing rules (first match wins)
 
@@ -222,6 +223,16 @@ infrastructure), state this clearly and stop:
 
 Present the analysis result and a concrete repair plan. **Do not make any changes yet.**
 
+### Auto-confirm mode
+
+If `auto_confirm = true`:
+- Display the repair plan (the `## Analysis:` block below) as usual
+- Do **not** show the `Proceed? (yes / no / feedback)` prompt
+- Print: `Auto-confirming repair plan (--yes flag set).`
+- Proceed immediately to Step 6
+
+If `auto_confirm = false`: use the Format and response handling below.
+
 ### Format
 
 ```
@@ -242,16 +253,6 @@ Present the analysis result and a concrete repair plan. **Do not make any change
 
 Proceed? (yes / no / feedback)
 ```
-
-### Auto-confirm mode
-
-If `auto_confirm = true`:
-- Display the repair plan (the `## Analysis:` block above) as usual
-- Do **not** show the `Proceed? (yes / no / feedback)` prompt
-- Print: `Auto-confirming repair plan (--yes flag set).`
-- Proceed immediately to Step 6
-
-If `auto_confirm = false`: use the response handling below.
 
 ### Response handling
 
@@ -364,6 +365,8 @@ If `auto_confirm = true`:
 - Automatically execute option 3: go to Step 7c (diagnostic comment)
 - In **bulk mode**: after posting the comment, record `{pr, status: "💬 DIAGNOSTIC COMMENT", detail: <comment_url>}` in `results` and continue to the next PR
 - In **single mode**: after posting the comment, stop
+
+Steps 7a (success comment) and 7b (knowledge base) are skipped — go directly to Step 7c.
 
 If `auto_confirm = false`: use the prompt below.
 
