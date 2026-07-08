@@ -1,20 +1,19 @@
 ---
 name: dependabot-fix
 description: >
-  Fix a single selected Dependabot or Renovate PR (or a repository whose main branch
-  CI broke after merging such a PR). Runs analysis autonomously, then proposes a repair
-  plan and waits for user confirmation before making any changes.
-  Invoke with: /dependabot-fix [host] <ref>
-  Examples: /dependabot-fix kyma-project/cli#2945
-            /dependabot-fix github.tools.sap kyma/warden#209
-            /dependabot-fix https://github.com/kyma-project/cli/pull/2945
-            /dependabot-fix kyma-project/cli
+  Fix Dependabot or Renovate PRs with active problems (merge conflicts or failing CI).
+  Without an argument, processes all open PRs where you are a requested reviewer.
+  With a scope argument, limits work to the specified host, org, repo, or single PR.
+  Runs analysis autonomously, then proposes a repair plan and waits for user confirmation before making any changes.
+  Accepts an optional scope argument to limit work to a specific host, org, repo, or PR.
+  Invoke with: /dependabot-fix [host/org/repo:PR]
 ---
 
 # /dependabot-fix
 
-Fix a single Dependabot or Renovate problem — either a PR in ACTION REQUIRED state or a
-repository whose main-branch CI broke after merging such a PR.
+Fix Dependabot or Renovate PRs that have active problems — merge conflicts or failing CI.
+Without an argument, processes all open PRs where you are a requested reviewer. With a scope
+argument, limits work to the specified host, org, repo, or single PR.
 
 All GitHub I/O is performed through the `dependabot-reviewer` MCP server tools. Do not
 call `gh` CLI for any GitHub operations — only for token acquisition. If the MCP server
@@ -22,41 +21,62 @@ is not present, stop and report an error.
 
 ---
 
-## Step 1: Parse argument and acquire token
+## Step 0: Parse arguments
 
-### 1a: Read the argument
+Parse `ARGUMENTS` (the text after the skill name) before doing anything else. Produce three
+variables used throughout the rest of the workflow:
 
-The skill is invoked as `/dependabot-fix [host] <ref>`. Parse `ARGUMENTS` (the text
-after the skill name).
+| Variable | Type | Description |
+|----------|------|-------------|
+| `filter_hosts` | `[string] \| null` | hosts to process; `null` = all authenticated hosts |
+| `filter_repo` | `"org/repo" \| null` | exact repo to scope to |
+| `filter_pr` | `int \| null` | single PR number; requires `filter_repo` |
 
-Supported formats — apply the **first matching rule**:
+Also derive:
 
-| Rule | Pattern | Result |
-|------|---------|--------|
-| 1 | Argument is a URL: `https://<host>/...` | Extract host from URL domain. If URL contains `/pull/<N>`, it is a PR ref; otherwise it is a repo ref. |
-| 2 | Argument starts with a known host token (word containing a `.` and matching an authenticated host, e.g. `github.tools.sap`) followed by `org/repo#N` | explicit host + PR ref |
-| 3 | Argument starts with a known host token followed by `org/repo` | explicit host + repo ref |
-| 4 | Argument matches `org/repo#N` (no host prefix) | default host + PR ref |
-| 5 | Argument matches `org/repo` (no host prefix, no `#`) | default host + repo ref |
-| 6 | Argument is empty or not parseable | Ask once: `"Provide a PR or repo to fix (e.g. org/repo#123 or https://github.com/org/repo/pull/123):"`. If the reply still does not match any rule above, print an error and stop. |
+- `filter_org` — the part before `/` in `filter_repo`, or the standalone `<org>` argument, or `null`
 
-### 1b: Resolve host and acquire token
+### Parsing rules (first match wins)
 
-Run:
+Strip a leading `https://` prefix first (do not pass the protocol to any tool).
+
+| Input format | `filter_hosts` | `filter_repo` | `filter_pr` |
+|-------------|----------------|---------------|-------------|
+| `<host>/<org>/<repo>/pull/<PR>` (after stripping `https://`) | `[host]` | `org/repo` | PR |
+| `<host>/<org>/<repo>` | `[host]` | `org/repo` | null |
+| `<host>/<org>` | `[host]` | null | null |
+| `<host>` (contains `.`) | `[host]` | null | null |
+| `<org>/<repo>:<PR>` | null | `org/repo` | PR |
+| `<org>/<repo>#<PR>` | null | `org/repo` | PR |
+| `<org>/<repo>` | null | `org/repo` | null |
+| `<org>` (no `.`) | null | null | null |
+| *(empty)* | null | null | null |
+
+**Host detection:** a path segment is a host if it contains `.`; otherwise it is an org.
+
+### Errors
+
+- `filter_hosts` contains a host not found in `gh auth status` output → stop:
+  `"Error: not logged in to <host>. Run 'gh auth login --hostname <host>'."`
+- `filter_pr` set but `filter_repo` is null → stop:
+  `"Error: PR number requires a repo (use <org>/<repo>:<PR>)."`
+
+---
+
+## Step 1: Discover hosts and acquire tokens
+
 ```bash
 gh auth status --show-token
 ```
 
-Parse the output to extract every `{host, token}` pair.
+Parse the output to extract every host and its token. Build a list of `{host, token}` pairs
+— one per authenticated host.
 
-Host resolution:
-1. If a URL was provided → host is the URL domain (e.g. `github.com`, `github.tools.sap`)
-2. If an explicit host was provided in the argument → use it
-3. If no host was provided → use `github.com` as default
-4. If the resolved host is not present in `gh auth status` output → stop with error:
-   `"Error: not logged in to <host>. Run 'gh auth login --hostname <host>' or provide the host explicitly."`
+If `filter_hosts` is non-null (set in Step 0), keep only pairs where the host appears in
+`filter_hosts`. Validate: if any host in `filter_hosts` is not present in `gh auth status`
+output, stop with the error described in Step 0. Do not hardcode any host names.
 
-Store `{host, token, target_type, repo, pr_number_or_branch}` for use in all subsequent steps.
+Store `{host, token}` pairs for use in all subsequent steps.
 
 ---
 
