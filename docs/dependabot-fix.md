@@ -46,7 +46,6 @@ load knowledge base from ~/.claude/dependabot-fix-knowledge/
         ├── merge_state != "dirty" AND ci_status != "failing" → skip silently
         └── proceed to PR analysis below
             └── after Step 7 → record result → continue to next PR
-    │
     └── print summary table
 
 ── PR analysis ─────────────────────────────────────────────────────────────
