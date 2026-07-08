@@ -39,7 +39,7 @@ See [docs/dependabot-verify.md](docs/dependabot-verify.md) for the classificatio
 ### Fix PRs with active problems (read-write)
 
 ```
-/dependabot-fix [host/org/repo:PR]
+/dependabot-fix [--yes] [host/org/repo:PR]
 ```
 
 Finds Dependabot / ospo-renovate PRs with merge conflicts or failing CI. For each problem PR it analyses the root cause, proposes a concrete repair plan, and executes it after your confirmation. Without an argument it scans all open PRs where you are a requested reviewer; a scope argument limits work to a specific host, org, repo, or single PR. Add `--yes` (or `-y`) to skip confirmation prompts and run fully autonomously.

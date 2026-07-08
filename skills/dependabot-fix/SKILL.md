@@ -42,7 +42,7 @@ Produce three variables used throughout the rest of the workflow:
 | `filter_hosts` | `[string] \| null` | hosts to process; `null` = all authenticated hosts |
 | `filter_repo` | `"org/repo" \| null` | exact repo to scope to |
 | `filter_pr` | `int \| null` | single PR number; requires `filter_repo` |
-| `target_type` | `"pr" \| "repo" \| "bulk"` | `"pr" | "repo" | "bulk"` — see derivation below |
+| `target_type` | `"pr" \| "repo" \| "bulk"` | derived value — see derivation below |
 
 Also derive:
 

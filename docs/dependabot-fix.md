@@ -97,7 +97,13 @@ load knowledge base from ~/.claude/dependabot-fix-knowledge/
 ## Execution Flow
 
 ```
-[proposed plan] → await user confirmation (tak/yes/empty = proceed)
+[proposed plan]
+│
+├── auto_confirm = true  → print plan + "Auto-confirming repair plan (--yes flag set)."
+│                          → proceed immediately
+│
+└── auto_confirm = false → await user confirmation (tak/yes/empty = proceed)
+
 │
 ├── fix merge conflict (if applicable)
 │   ├── get_file_contents() for each conflicted file from PR branch + base
@@ -113,7 +119,8 @@ load knowledge base from ~/.claude/dependabot-fix-knowledge/
 │
 └── main branch case
     ├── get_branch_head_sha(branch="main")
-    ├── commit_files(branch="fix/dependabot-ci-<desc>")  ← creates new branch
+    ├── gh api ... -X POST .../git/refs  ← pre-create branch (commit_files does NOT auto-create)
+    ├── commit_files(branch="fix/dependabot-ci-<desc>")
     └── create_pull_request(head="fix/...", base="main")
 ```
 
