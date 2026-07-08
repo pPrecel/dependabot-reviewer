@@ -5,7 +5,6 @@ description: >
   Without an argument, processes all open PRs where you are a requested reviewer.
   With a scope argument, limits work to the specified host, org, repo, or single PR.
   Runs analysis autonomously, then proposes a repair plan and waits for user confirmation before making any changes.
-  Accepts an optional scope argument to limit work to a specific host, org, repo, or PR.
   Invoke with: /dependabot-fix [host/org/repo:PR]
 ---
 
@@ -31,10 +30,15 @@ variables used throughout the rest of the workflow:
 | `filter_hosts` | `[string] \| null` | hosts to process; `null` = all authenticated hosts |
 | `filter_repo` | `"org/repo" \| null` | exact repo to scope to |
 | `filter_pr` | `int \| null` | single PR number; requires `filter_repo` |
+| `target_type` | `"pr" \| "repo" \| "bulk"` | execution mode derived from parsed argument |
 
 Also derive:
 
 - `filter_org` — the part before `/` in `filter_repo`, or the standalone `<org>` argument, or `null`
+- `target_type` — derived from the parsed argument:
+  - `"pr"` — when `filter_pr` is not null (a specific PR was given)
+  - `"repo"` — when `filter_pr` is null and `filter_repo` is not null (a repo was given, bulk-mode repo analysis)
+  - `"bulk"` — when both `filter_pr` and `filter_repo` are null (process all PRs in scope)
 
 ### Parsing rules (first match wins)
 
