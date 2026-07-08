@@ -4,12 +4,12 @@ This plugin automates Dependabot and Renovate PR review for Claude Code. It ship
 
 ## Skills
 
-| Skill | Invocation | Access | Purpose |
-|-------|-----------|--------|---------|
-| [`/dependabot-review`](dependabot-review.md) | `/dependabot-review` | read-write | Review all open PRs: approve, set automerge, update branches, post ACTION REQUIRED comments |
-| [`/dependabot-verify`](dependabot-verify.md) | `/dependabot-verify` | read-only | Report status of all open PRs without taking any write actions |
-| [`/dependabot-fix`](dependabot-fix.md) | `/dependabot-fix <ref>` | read-write | Fix a single PR or repo whose main-branch CI broke after a dependency merge |
-| [`/dependabot-update`](dependabot-update.md) | `/dependabot-update` | read-write | Update all open PR branches: rebase behind branches and resolve dependency-file merge conflicts |
+| Skill                                        | Invocation                         | Access     | Purpose                                                                                         |
+|----------------------------------------------|------------------------------------|------------|-------------------------------------------------------------------------------------------------|
+| [`/dependabot-review`](dependabot-review.md) | `/dependabot-review [scope]`       | read-write | Review all open PRs: approve, set automerge, update branches, post ACTION REQUIRED comments     |
+| [`/dependabot-verify`](dependabot-verify.md) | `/dependabot-verify [scope]`       | read-only  | Report status of all open PRs without taking any write actions                                  |
+| [`/dependabot-fix`](dependabot-fix.md)       | `/dependabot-fix [--yes] [scope]`  | read-write | Fix PRs or repos with merge conflicts or failing CI; bulk or single mode                        |
+| [`/dependabot-update`](dependabot-update.md) | `/dependabot-update [scope]`       | read-write | Update all open PR branches: rebase behind branches and resolve dependency-file merge conflicts |
 
 ## Architecture
 

@@ -10,22 +10,22 @@ Fixes Dependabot and Renovate PRs with active problems (merge conflicts or faili
 
 Without an argument, processes all open PRs where you are a requested reviewer.
 
-| Input | Scope |
-|-------|-------|
-| *(empty)* | all authenticated hosts |
-| `<host>` | single host |
-| `<org>` | single org across default host |
-| `<host>/<org>` | single org on specified host |
-| `org/repo` | single repo |
-| `<host>/org/repo` | single repo on specified host |
-| `org/repo:PR` or `org/repo#PR` | single PR (single mode) |
-| Full URL | single PR or repo (host extracted from domain) |
+| Input                           | Scope                                        |
+|---------------------------------|----------------------------------------------|
+| *(empty)*                       | all authenticated hosts                      |
+| `<host>`                        | single host                                  |
+| `<org>`                         | single org across default host               |
+| `<host>/<org>`                  | single org on specified host                 |
+| `org/repo`                      | single repo                                  |
+| `<host>/org/repo`               | single repo on specified host                |
+| `org/repo:PR` or `org/repo#PR` | single PR (single mode)                      |
+| Full URL                        | single PR or repo (host extracted from domain) |
 
 ### Flag
 
-| Flag | Alias | Effect |
-|------|-------|--------|
-| `--yes` | `-y` | Skip all confirmation prompts. Repair plans execute automatically; unexpected situations post a diagnostic comment without asking. |
+| Flag    | Alias | Effect                                                                                                          |
+|---------|-------|-----------------------------------------------------------------------------------------------------------------|
+| `--yes` | `-y`  | Skip all confirmation prompts. Repair plans execute automatically; unexpected situations post a diagnostic comment without asking. |
 
 Default host is `github.com`. Single mode is triggered only when a PR number is provided.
 

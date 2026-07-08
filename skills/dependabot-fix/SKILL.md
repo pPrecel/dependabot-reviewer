@@ -56,17 +56,17 @@ Also derive:
 
 Strip a leading `https://` prefix first (do not pass the protocol to any tool).
 
-| Input format | `filter_hosts` | `filter_repo` | `filter_pr` |
-|-------------|----------------|---------------|-------------|
-| `<host>/<org>/<repo>/pull/<PR>` (after stripping `https://`) | `[host]` | `org/repo` | PR |
-| `<host>/<org>/<repo>` | `[host]` | `org/repo` | null |
-| `<host>/<org>` | `[host]` | null | null |
-| `<host>` (contains `.`) | `[host]` | null | null |
-| `<org>/<repo>:<PR>` | null | `org/repo` | PR |
-| `<org>/<repo>#<PR>` | null | `org/repo` | PR |
-| `<org>/<repo>` | null | `org/repo` | null |
-| `<org>` (no `.`) | null | null | null |
-| *(empty)* | null | null | null |
+| Input format                                              | `filter_hosts` | `filter_repo` | `filter_pr` |
+|-----------------------------------------------------------|----------------|---------------|-------------|
+| `<host>/<org>/<repo>/pull/<PR>` (after stripping `https://`) | `[host]`    | `org/repo`    | PR          |
+| `<host>/<org>/<repo>`                                     | `[host]`       | `org/repo`    | null        |
+| `<host>/<org>`                                            | `[host]`       | null          | null        |
+| `<host>` (contains `.`)                                   | `[host]`       | null          | null        |
+| `<org>/<repo>:<PR>`                                       | null           | `org/repo`    | PR          |
+| `<org>/<repo>#<PR>`                                       | null           | `org/repo`    | PR          |
+| `<org>/<repo>`                                            | null           | `org/repo`    | null        |
+| `<org>` (no `.`)                                          | null           | null          | null        |
+| *(empty)*                                                 | null           | null          | null        |
 
 **Host detection:** a path segment is a host if it contains `.`; otherwise it is an org.
 

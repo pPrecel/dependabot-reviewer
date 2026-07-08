@@ -18,16 +18,16 @@ This plugin ships a Python MCP server (`dependabot-reviewer`) that handles all G
 
 **Tools:**
 
-| Tool | Description |
-|------|-------------|
-| `list_dependabot_prs(host, token)` | List open Dependabot PRs where the current user is a requested reviewer or has already reviewed. Returns `[{number, repo, title, url}]`. |
-| `get_pr_details(host, token, repo, pr_number)` | Fetch reviews, automerge status, CI status, merge state, diff classification, and comments in one call. Returns `PRDetails`. |
-| `get_changelog(host, token, library_repo, new_version)` | Fetch release notes (tries GitHub Releases, then CHANGELOG.md). Returns `{found, excerpt, source}`. |
-| `prepare_merge(host, token, repo, pr_number, comment)` | Orchestrate branch update → env deployment approvals → automerge → approve. Idempotent. Returns `{status, branch_updated, envs_approved, automerge_set, approved, errors}`. |
-| `update_branch(host, token, repo, pr_number)` | Update a PR branch that is behind its base branch. Does NOT approve or set automerge. Returns `{status: "done" \| "needs_manual_rebase", branch_updated: bool, message: str}`. |
-| `post_action_required_comment(host, token, repo, pr_number, reason, library, old_version, new_version, semver, failing_checks?, changelog_excerpt?)` | Post a structured ACTION REQUIRED comment. `reason`: `"failing-ci"` or `"breaking-changes"`. |
-| `get_branch_ci_status(host, token, repo, branch)` | Get CI status of the HEAD commit of a branch. Returns `{sha, branch, ci_status, failing_checks, total_checks, passing_checks}`. `ci_status`: `"passing"` \| `"failing"` \| `"pending"` \| `"unknown"`. Raises on 404. |
-| `list_recently_merged_dependabot_prs(host, token, since)` | List Dependabot/ospo-renovate PRs merged since `since` (ISO 8601 date) that the current user reviewed. Returns `[{number, repo, title, url}]`. |
+| Tool                                                                                                                                                 | Description                                                                                                                                                                     |
+|------------------------------------------------------------------------------------------------------------------------------------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `list_dependabot_prs(host, token)`                                                                                                                   | List open Dependabot PRs where the current user is a requested reviewer or has already reviewed. Returns `[{number, repo, title, url}]`.                                        |
+| `get_pr_details(host, token, repo, pr_number)`                                                                                                       | Fetch reviews, automerge status, CI status, merge state, diff classification, and comments in one call. Returns `PRDetails`.                                                    |
+| `get_changelog(host, token, library_repo, new_version)`                                                                                              | Fetch release notes (tries GitHub Releases, then CHANGELOG.md). Returns `{found, excerpt, source}`.                                                                            |
+| `prepare_merge(host, token, repo, pr_number, comment)`                                                                                               | Orchestrate branch update → env deployment approvals → automerge → approve. Idempotent. Returns `{status, branch_updated, envs_approved, automerge_set, approved, errors}`.    |
+| `update_branch(host, token, repo, pr_number)`                                                                                                        | Update a PR branch that is behind its base branch. Does NOT approve or set automerge. Returns `{status: "done" \| "needs_manual_rebase", branch_updated: bool, message: str}`. |
+| `post_action_required_comment(host, token, repo, pr_number, reason, library, old_version, new_version, semver, failing_checks?, changelog_excerpt?)` | Post a structured ACTION REQUIRED comment. `reason`: `"failing-ci"` or `"breaking-changes"`.                                                                                   |
+| `get_branch_ci_status(host, token, repo, branch)`                                                                                                    | Get CI status of the HEAD commit of a branch. Returns `{sha, branch, ci_status, failing_checks, total_checks, passing_checks}`. `ci_status`: `"passing"` \| `"failing"` \| `"pending"` \| `"unknown"`. Raises on 404. |
+| `list_recently_merged_dependabot_prs(host, token, since)`                                                                                            | List Dependabot/ospo-renovate PRs merged since `since` (ISO 8601 date) that the current user reviewed. Returns `[{number, repo, title, url}]`.                                 |
 
 **Parameters common to all tools:**
 - `host` — the GitHub host hostname (e.g. `"github.com"` or any other host)
@@ -126,8 +126,8 @@ When a PR has `ci_status == "failing"` or `merge_state == "dirty"`, check loaded
 
 ### Usage per skill
 
-| Skill | How to use knowledge base |
-|-------|--------------------------|
-| `dependabot-review` | Use matching entries to inform the ACTION REQUIRED comment — note the known root cause and recommended fix steps |
+| Skill               | How to use knowledge base                                                                                                          |
+|---------------------|------------------------------------------------------------------------------------------------------------------------------------|
+| `dependabot-review` | Use matching entries to inform the ACTION REQUIRED comment — note the known root cause and recommended fix steps                   |
 | `dependabot-verify` | Use matching entries to enrich the Detail column — append `(known pattern: <title>)` for ACTION REQUIRED PRs where a match is found |
-| `dependabot-fix` | Use matching entries as the primary fix strategy before reading CI logs |
+| `dependabot-fix`    | Use matching entries as the primary fix strategy before reading CI logs                                                            |

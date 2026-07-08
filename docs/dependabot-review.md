@@ -8,17 +8,17 @@
 
 `<scope>` is optional. Supported formats:
 
-| Format | Effect |
-|--------|--------|
-| *(none)* | Process all PRs across all authenticated hosts |
-| `github.com/org/repo/pull/123` | Single PR (full URL) |
-| `https://github.tools.sap/org/repo/pull/123` | Single PR (full HTTPS URL) |
-| `github.com/org/repo` | All PRs in one repo on a specific host |
-| `github.com/org` | All PRs in one org on a specific host |
-| `github.com` | All PRs on a specific host |
-| `org/repo:123` or `org/repo#123` | Single PR (default host) |
-| `org/repo` | All PRs in one repo (all hosts) |
-| `org` | All PRs in one org (all hosts) |
+| Format                                             | Effect                                          |
+|----------------------------------------------------|-------------------------------------------------|
+| *(none)*                                           | Process all PRs across all authenticated hosts  |
+| `github.com/org/repo/pull/123`                     | Single PR (full URL)                            |
+| `https://github.tools.sap/org/repo/pull/123`       | Single PR (full HTTPS URL)                      |
+| `github.com/org/repo`                              | All PRs in one repo on a specific host          |
+| `github.com/org`                                   | All PRs in one org on a specific host           |
+| `github.com`                                       | All PRs on a specific host                      |
+| `org/repo:123` or `org/repo#123`                  | Single PR (default host)                        |
+| `org/repo`                                         | All PRs in one repo (all hosts)                 |
+| `org`                                              | All PRs in one org (all hosts)                  |
 
 Reviews all open Dependabot/Renovate PRs across all authenticated GitHub hosts. Takes write actions: approves PRs, sets automerge, updates branches, posts comments.
 
