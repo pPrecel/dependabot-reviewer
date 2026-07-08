@@ -109,6 +109,8 @@ If `target_type == "repo"` → **repo mode**:
 - Set `current_repo = {repo: filter_repo, host: <first host from Step 1>, token: <matching token>}`
 - Jump directly to Step 4 (Analyse) with `current_repo`
 
+If `target_type == "bulk"` → proceed to 3b.
+
 ### 3b: Discover PRs for bulk mode (target_type == "bulk")
 
 For each `{host, token}` pair from Step 1, apply the following routing:
@@ -138,10 +140,10 @@ For each PR in the combined list, sequentially:
 2. If `merge_state != "dirty"` AND `ci_status != "failing"` → skip silently (do not add to `results`)
 3. Otherwise → set `current_pr = pr` and proceed to Step 4 (Analyse) for this PR
 4. After Step 7 (Post-execution) completes for this PR, record the outcome in `results`:
-   - Fix executed successfully → `{pr, result: "✅ FIXED"}`
-   - User replied `no` to confirmation → `{pr, result: "⏭️ SKIPPED (user)"}`
-   - Step 6d triggered and not resolved → `{pr, result: "❌ FAILED"}`
-   - Diagnostic comment posted (Step 7c) → `{pr, result: "💬 DIAGNOSTIC COMMENT"}`
+   - Fix executed successfully → `{pr, status: "✅ FIXED", detail: <commit_url>}`
+   - User replied `no` to confirmation → `{pr, status: "⏭️ SKIPPED (user)", detail: ""}`
+   - Step 6d triggered and not resolved → `{pr, status: "❌ FAILED", detail: <step where stuck>}`
+   - Diagnostic comment posted (Step 7c) → `{pr, status: "💬 DIAGNOSTIC COMMENT", detail: <comment_url>}`
 5. Continue to next PR
 
 ### 3d: Summary table (bulk mode only)
@@ -151,9 +153,9 @@ After the loop completes, print:
 ```
 ## Summary
 
-| Repo | PR | Title | Result |
-|------|----|-------|--------|
-| <pr.repo> | #<pr.number> | <pr.title> | <result> |
+| Repo | PR | Title | Status | Detail |
+|------|----|-------|--------|--------|
+| <pr.repo> | [#<pr.number>](<pr.url>) | <pr.title> | <status> | <detail or empty> |
 ...
 ```
 
@@ -230,7 +232,9 @@ Proceed? (yes / no / feedback)
 ### Response handling
 
 - `tak`, `yes`, or empty reply → proceed to Step 6
-- `nie` or `no` → stop without any changes; print "Cancelled — no changes were made."
+- `nie` or `no` → print `"Skipped — no changes were made."` then:
+  - In **single mode** (`target_type == "pr"` or `"repo"`): stop.
+  - In **bulk mode** (`target_type == "bulk"`): record `{pr, status: "⏭️ SKIPPED (user)", detail: ""}` in the `results` list and continue to the next PR in Step 3c.
 - Any other text → treat as refinement feedback: update the plan accordingly and present
   the revised plan again with the same question. Repeat until `tak`/`nie`.
 
