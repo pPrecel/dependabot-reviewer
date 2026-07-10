@@ -27,6 +27,18 @@ def _deduplicate(items: list[dict]) -> list[dict]:
     return result
 
 
+def _latest_check_runs(check_runs: list[dict]) -> list[dict]:
+    """Deduplicate check runs by name, keeping only the latest run per name.
+
+    GitHub returns all runs (including re-runs) for a SHA in chronological order.
+    A stale failure from an earlier run would otherwise shadow a passing re-run.
+    """
+    latest: dict[str, dict] = {}
+    for run in check_runs:
+        latest[run["name"]] = run
+    return list(latest.values())
+
+
 def _repo_from_url(url: str) -> str:
     """Extract 'owner/repo' from a GitHub API repository_url."""
     # url like "https://api.github.com/repos/owner/repo"
@@ -109,7 +121,7 @@ async def get_pr_details(host: str, token: str, repo: str, pr_number: int) -> di
         params={"per_page": 100},
     )
     checks_r.raise_for_status()
-    checks_raw = checks_r.json().get("check_runs", [])
+    checks_raw = _latest_check_runs(checks_r.json().get("check_runs", []))
 
     reviews = [Review(author=r["user"]["login"], state=r["state"]) for r in reviews_raw]
 
@@ -435,7 +447,7 @@ async def get_branch_ci_status(host: str, token: str, repo: str, branch: str) ->
     """
     client = get_client(host, token)
     sha = await client.get_branch_head_sha(repo, branch)
-    checks = await client.list_check_runs(repo, sha)
+    checks = _latest_check_runs(await client.list_check_runs(repo, sha))
 
     if not checks:
         return BranchCiStatus(

@@ -1,7 +1,7 @@
 import pytest
 import respx
 import httpx
-from dependabot_mcp.server import get_branch_ci_status, list_dependabot_prs, list_recently_merged_dependabot_prs
+from dependabot_mcp.server import get_branch_ci_status, get_pr_details, list_dependabot_prs, list_recently_merged_dependabot_prs
 
 
 @respx.mock
@@ -222,3 +222,66 @@ async def test_list_dependabot_prs_no_filter_unchanged():
     # All queries include standard Dependabot author qualifiers
     assert any("author:app/dependabot" in q for q in captured_queries)
     assert any("review-requested:@me" in q for q in captured_queries)
+
+
+@respx.mock
+async def test_get_branch_ci_status_deduplicates_reruns():
+    """A stale failure from an earlier run must not shadow a passing re-run."""
+    respx.get("https://api.github.com/repos/owner/repo/git/ref/heads/main").mock(
+        return_value=httpx.Response(200, json={
+            "object": {"sha": "abc999", "type": "commit"}
+        })
+    )
+    respx.get("https://api.github.com/repos/owner/repo/commits/abc999/check-runs").mock(
+        return_value=httpx.Response(200, json={
+            "check_runs": [
+                # older run: failure
+                {"name": "integration-test", "status": "completed", "conclusion": "failure"},
+                # newer re-run of same check: success
+                {"name": "integration-test", "status": "completed", "conclusion": "success"},
+                {"name": "build", "status": "completed", "conclusion": "success"},
+            ]
+        })
+    )
+    result = await get_branch_ci_status(host="github.com", token="tok", repo="owner/repo", branch="main")
+    assert result["ci_status"] == "passing"
+    assert result["failing_checks"] == []
+
+
+@respx.mock
+async def test_get_pr_details_deduplicates_reruns():
+    """get_pr_details must also deduplicate stale failures from earlier check runs."""
+    pr_payload = {
+        "number": 42,
+        "title": "chore(deps): bump foo",
+        "head": {"sha": "deadbeef"},
+        "auto_merge": None,
+        "mergeable_state": "clean",
+        "body": "",
+    }
+    respx.get("https://api.github.com/repos/owner/repo/pulls/42").mock(
+        return_value=httpx.Response(200, json=pr_payload)
+    )
+    respx.get("https://api.github.com/repos/owner/repo/pulls/42/reviews").mock(
+        return_value=httpx.Response(200, json=[])
+    )
+    respx.get("https://api.github.com/repos/owner/repo/issues/42/comments").mock(
+        return_value=httpx.Response(200, json=[])
+    )
+    respx.get("https://api.github.com/repos/owner/repo/pulls/42",
+              headers__contains={"Accept": "application/vnd.github.v3.diff"}).mock(
+        return_value=httpx.Response(200, text="diff --git a/go.sum b/go.sum\n")
+    )
+    respx.get("https://api.github.com/repos/owner/repo/commits/deadbeef/check-runs").mock(
+        return_value=httpx.Response(200, json={
+            "check_runs": [
+                # stale failure from before a re-run
+                {"id": 1, "name": "integration-test", "status": "completed", "conclusion": "failure"},
+                # latest run of the same check: success
+                {"id": 2, "name": "integration-test", "status": "completed", "conclusion": "success"},
+            ]
+        })
+    )
+    result = await get_pr_details(host="github.com", token="tok", repo="owner/repo", pr_number=42)
+    assert result["ci_status"] == "passing"
+    assert result["failing_checks"] == []
