@@ -196,3 +196,187 @@ unhealthy_repos = { repo | main_health[repo].ci_status == "failing" AND repo NOT
 
 PRs in `unhealthy_repos` are **excluded from Steps 4 and 5**. This prevents reviewing or
 approving PRs into a broken pipeline.
+
+---
+
+## Step 4: Review / Update
+
+For each open PR where:
+- PR key (`"org/repo#123"`) NOT in `blocked_prs`
+- PR repo NOT in `unhealthy_repos`
+
+Route by current status:
+
+| Status | Action |
+|--------|--------|
+| `👀 NEEDS REVIEW` | Execute full `/dependabot-review` Path B analysis for this PR. Use `prepare_merge` to approve and set automerge. |
+| `🔄 NEEDS BRANCH UPDATE` | Call `update_branch(host, token, repo, pr_number)`. If `needs_manual_rebase` → attempt conflict resolution as per `/dependabot-update` Step 3.5. |
+| `⏳ WAITING FOR CI` | No action — wait for GitHub. |
+| `✅ READY` | No action — GitHub automerge will handle it. |
+| `⚠️ ACTION REQUIRED` | Skip here — handled in Step 5. |
+
+---
+
+## Step 5: Fix PRs with ACTION REQUIRED
+
+For each open PR where:
+- Status is `⚠️ ACTION REQUIRED`
+- PR key NOT in `blocked_prs`
+- PR repo NOT in `unhealthy_repos`
+
+### Step 5a: Present diagnosis and ask for confirmation
+
+Collect diagnosis from `get_pr_details`:
+- `failing_checks[].name` — names of failing CI checks
+- `diff_classification` — library, old_version, new_version, semver
+
+Present:
+
+```
+PR <repo>#<number> — <title>
+Problem: <merge conflict | CI failing: <check names> | both>
+Library: <library> <old_version> → <new_version> (<semver>)
+
+Attempt fix? (yes / no)
+```
+
+### Step 5b: Execute or block
+
+- `tak`, `yes`, or empty reply → invoke the `/dependabot-fix` logic with `auto_confirm=true` for this PR
+  (equivalent to `/dependabot-fix --yes <repo>:<pr_number>`).
+  - Fix succeeds → record action `🔧 fixed <commit_url>`.
+  - Fix fails or posts diagnostic comment → add `"org/repo#<number>"` to `blocked_prs`,
+    record action `⏭️ blocked (fix failed)`.
+- `nie` or `no` → add `"org/repo#<number>"` to `blocked_prs`,
+  record action `⏭️ blocked (user declined)`.
+- Any other input → re-present the prompt from Step 5a and wait for a valid response.
+
+---
+
+## Step 6: Evaluate stop condition
+
+Collect current state after Steps 3–5:
+
+```
+open_eligible_prs = [pr for pr in all_open_prs if "org/repo#<number>" not in blocked_prs]
+unhealthy_eligible_repos = [
+    repo for repo, health in main_health.items()
+    if health.ci_status == "failing" AND repo not in blocked_repos
+]
+```
+
+**Stop condition met** when BOTH are true:
+- `open_eligible_prs` is empty (all non-blocked PRs have been merged by GitHub)
+- `unhealthy_eligible_repos` is empty (all non-blocked repos have passing main)
+
+**If stop condition met:**
+
+Print the final report (see Output Format → Final report below), then exit.
+The `/loop` scheduler will invoke this skill again — on that next invocation,
+the same check will detect "nothing to do" and exit silently. The user stops
+the loop manually.
+
+**If stop condition NOT met:**
+
+Print the iteration report (see Output Format → Iteration report below) and exit normally.
+The `/loop` scheduler will invoke the next cycle after the configured interval.
+
+---
+
+## Step 7: Save state
+
+Write updated state back to `~/.claude/dependabot-babysit-state.json` using the Write tool:
+
+```json
+{
+  "blocked_prs": ["<updated list>"],
+  "blocked_repos": ["<updated list>"],
+  "iteration": <current iteration number>,
+  "start_time": "<preserved from initial write>",
+  "scope": "<preserved from initial write>"
+}
+```
+
+Save **before** printing the reports so that if the skill is interrupted mid-report,
+state is not lost.
+
+---
+
+## Output Format
+
+### Iteration report
+
+```
+## Babysit — iteration #<N>  [YYYY-MM-DD HH:MM]
+
+### PRs
+| Repo | PR | Status | Action |
+|------|----|--------|--------|
+| org/repo | [#123](url) | ✅ merged | — |
+| org/repo | [#456](url) | ✅ READY | ⏳ waiting for GitHub automerge |
+| org/repo | [#789](url) | ⚠️ ACTION REQUIRED | 🔧 fixed <commit_url> |
+| org/repo | [#101](url) | ⚠️ ACTION REQUIRED | ⏭️ blocked (user declined) |
+| org/repo | [#102](url) | ⏳ WAITING FOR CI | ⏳ waiting |
+| org/repo | [#103](url) | 🔒 skipped | repo main failing |
+
+### Main branch health
+| Repo | Branch | Status | Action |
+|------|--------|--------|--------|
+| org/repo | main | ✅ passing | — |
+| org/repo2 | main | ❌ failing | 🔧 fixed (patch PR #42 opened) |
+| org/repo3 | main | ❌ failing | ⏭️ blocked (user declined) |
+
+Next iteration in <interval>.
+```
+
+**Action values for PRs:**
+- `—` — no action taken (already merged, READY, or WAITING)
+- `⏳ waiting for GitHub automerge` — READY, automerge set, waiting for GitHub
+- `🔧 fixed <commit_url>` — fix committed successfully
+- `⏭️ blocked (user declined)` — user said no to fix prompt
+- `⏭️ blocked (fix failed)` — fix attempted but could not be completed
+- `🔒 skipped` — PR's repo has a failing main branch; deferred to next iteration
+
+**Action values for main branches:**
+- `—` — passing, no action needed
+- `🔧 fixed (patch PR #N opened)` — fix PR created against main
+- `🔧 fixed (commit <url>)` — fix committed directly to PR branch
+- `⏭️ blocked (user declined)` — user said no
+- `⏭️ blocked (fix failed)` — fix attempted but failed
+- `ℹ️ not dependency-related` — CI failing but not caused by a Dependabot merge; out of scope
+
+### Final report
+
+```
+## Babysit — done  [YYYY-MM-DD HH:MM]
+
+All eligible PRs merged and all main branches passing.
+
+### Blocked PRs (require manual attention)
+| Repo | PR | Title | Blocked reason | Iteration |
+|------|----|-------|----------------|-----------|
+| org/repo | [#789](url) | Bump foo 1.0→2.0 | user declined fix | #2 |
+| org/repo | [#999](url) | Bump bar 3.0→4.0 | fix failed | #3 |
+
+### Blocked repos (main branch still failing)
+| Repo | Reason | Iteration blocked |
+|------|--------|-------------------|
+| org/repo3 | user declined fix | #3 |
+
+Total iterations: 5  |  Elapsed: ~50 minutes
+```
+
+Omit "Blocked PRs" section if `blocked_prs` is empty.
+Omit "Blocked repos" section if `blocked_repos` is empty.
+If both are empty, print instead: `No manual action required. Everything merged and green.`
+
+### Silent exit (stop condition already met on re-entry)
+
+When the stop condition is detected at the top of a fresh invocation (all eligible PRs
+merged, all mains passing) and the iteration report was already printed in the previous
+run, exit silently:
+
+```
+Babysit — nothing to do. All eligible PRs merged and all mains passing.
+Stop the /loop manually when ready.
+```
