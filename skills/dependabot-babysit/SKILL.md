@@ -12,6 +12,9 @@ description: >
 Drive all Dependabot/Renovate PRs to merged state with healthy main branches.
 Runs in a loop — invoke once and it keeps cycling until everything is done.
 
+**Requires:** the `/loop` built-in skill must be available in the current Claude Code
+session. If it is not present, stop and report: `"Error: /loop skill not found. /dependabot-babysit requires the bundled loop skill."`
+
 ---
 
 ## Step 0: Parse arguments

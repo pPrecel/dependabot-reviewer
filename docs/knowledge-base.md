@@ -1,6 +1,6 @@
 # Shared Knowledge Base
 
-All three skills share a persistent knowledge base of known CI failure patterns and fix strategies. It accumulates across sessions and is maintained by the `/dependabot-fix` skill.
+All skills share a persistent knowledge base of known CI failure patterns and fix strategies. It accumulates across sessions and is maintained by the `/dependabot-fix` skill.
 
 ## Location
 

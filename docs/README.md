@@ -15,44 +15,44 @@ This plugin automates Dependabot and Renovate PR review for Claude Code. It ship
 ## Architecture
 
 ```
-┌──────────────────────────────────────────────────────────────────────────────┐
-│                           Claude Code session                                │
-│                                                                              │
-│  /dependabot-review  /dependabot-verify  /dependabot-fix  /dependabot-update │
-│         │                   │                  │                  │          │
-│         └───────────────────┴──────────────────┴──────────────────┘          │
-│                                      │                                       │
-│                              MCP server calls                                │
-└──────────────────────────────────────┬───────────────────────────────────────┘
-                                       │
-               ┌───────────────────────▼───────────────────────┐
-               │        dependabot-reviewer MCP server         │
-               │        (Python, mcp-server/)                  │
-               │                                               │
-               │  list_dependabot_prs                          │
-               │  get_pr_details                               │
-               │  get_changelog                                │
-               │  prepare_merge                                │
-               │  update_branch                                │
-               │  post_action_required_comment                 │
-               │  get_branch_ci_status                         │
-               │  get_check_logs                               │
-               │  list_recently_merged_dependabot_prs          │
-               │  commit_files                                 │
-               │  create_pull_request                          │
-               │  get_branch_head_sha                          │
-               │  get_file_contents                            │
-               │  get_pr_head_sha                              │
-               │  get_raw_diff                                 │
-               └───────────────────────────────────────────────┘
-                                       │
-                         GitHub API (REST + GraphQL)
-                      github.com, github.tools.sap, ...
+┌─────────────────────────────────────────────────────────────────────────────────────────────────────┐
+│                                      Claude Code session                                             │
+│                                                                                                      │
+│  /dependabot-review  /dependabot-verify  /dependabot-fix  /dependabot-update  /dependabot-babysit   │
+│         │                   │                  │                  │                    │             │
+│         └───────────────────┴──────────────────┴──────────────────┴────────────────────┘            │
+│                                                │                                                     │
+│                                        MCP server calls                                             │
+└────────────────────────────────────────────────┬────────────────────────────────────────────────────┘
+                                                 │
+               ┌─────────────────────────────────▼─────────────────────────────────┐
+               │              dependabot-reviewer MCP server                       │
+               │              (Python, mcp-server/)                                │
+               │                                                                   │
+               │  list_dependabot_prs                                              │
+               │  get_pr_details                                                   │
+               │  get_changelog                                                    │
+               │  prepare_merge                                                    │
+               │  update_branch                                                    │
+               │  post_action_required_comment                                     │
+               │  get_branch_ci_status                                             │
+               │  get_check_logs                                                   │
+               │  list_recently_merged_dependabot_prs                              │
+               │  commit_files                                                     │
+               │  create_pull_request                                              │
+               │  get_branch_head_sha                                              │
+               │  get_file_contents                                                │
+               │  get_pr_head_sha                                                  │
+               │  get_raw_diff                                                     │
+               └───────────────────────────────────────────────────────────────────┘
+                                                 │
+                               GitHub API (REST + GraphQL)
+                            github.com, github.tools.sap, ...
 ```
 
 ## Shared Knowledge Base (Cache)
 
-All three skills share a persistent knowledge base at `~/.claude/dependabot-fix-knowledge/`. See [knowledge-base.md](knowledge-base.md) for the full description.
+All skills share a persistent knowledge base at `~/.claude/dependabot-fix-knowledge/`. See [knowledge-base.md](knowledge-base.md) for the full description.
 
 ## Multi-host Support
 

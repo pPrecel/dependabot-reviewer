@@ -91,9 +91,8 @@ Read the knowledge base as described in the agent's **Knowledge Base** section. 
 
 ## Step 1.9: Early exit check
 
-If the state file was already at iteration ≥ 1 when loaded in Step 1 (meaning this is a
-re-invocation, not the first cycle), and the previous cycle ended by printing the final
-report, check whether the stop condition is **already satisfied** before running discovery:
+On every re-invocation (iteration ≥ 1 after increment in Step 1), check whether the
+stop condition is **already satisfied** before running the full discovery:
 
 - Read `all_open_prs` by calling `list_dependabot_prs` for each host (same scope as Step 2b).
 - If the result is empty AND there were no repos with failing main CI in the last iteration
@@ -206,7 +205,9 @@ Proceed with /dependabot-fix? (yes / no)
 
 - `tak`, `yes`, or empty reply → invoke the `/dependabot-fix` logic with `auto_confirm=true` for this repo
   (equivalent to `/dependabot-fix --yes <repo>`).
-  - If fix succeeds → re-check `get_branch_ci_status` to confirm main is now passing.
+  - If fix succeeds → call `get_branch_ci_status(host, token, repo, branch)` to confirm main is now passing.
+    Update `main_health[repo].ci_status` to `"passing"` in memory so the stop condition in Step 6
+    and the `unhealthy_repos` gate use fresh state.
   - If fix fails (diagnostic comment posted, or unexpected situation hit) → add `"org/repo"` to `blocked_repos`.
 - `nie` or `no` → add `"org/repo"` to `blocked_repos`.
 - Any other input → re-present the prompt from Step 3b and wait for a valid response.
@@ -239,6 +240,10 @@ Route by current status:
 | `⏳ WAITING FOR CI` | No action — wait for GitHub. |
 | `✅ READY` | No action — GitHub automerge will handle it. |
 | `⚠️ ACTION REQUIRED` | Skip here — handled in Step 5. |
+
+After routing, record each PR whose repo is in `unhealthy_repos` with status `🔒 skipped`
+and action `repo main failing` in the iteration report. These PRs are not processed in
+Step 5 either — they are deferred to the next iteration.
 
 ---
 
@@ -278,7 +283,26 @@ Attempt fix? (yes / no)
 
 ---
 
-## Step 6: Evaluate stop condition
+## Step 6: Save state
+
+Write updated state back to `~/.claude/dependabot-babysit-state.json` using the Write tool:
+
+```json
+{
+  "blocked_prs": ["<updated list>"],
+  "blocked_repos": ["<updated list>"],
+  "iteration": <current iteration number>,
+  "start_time": "<preserved from initial write>",
+  "scope": "<preserved from initial write>"
+}
+```
+
+Always save **before** printing reports so that if the skill is interrupted mid-report,
+state is not lost.
+
+---
+
+## Step 7: Evaluate stop condition
 
 Collect current state after Steps 3–5:
 
@@ -305,25 +329,6 @@ the loop manually.
 
 Print the iteration report (see Output Format → Iteration report below) and exit normally.
 The `/loop` scheduler will invoke the next cycle after the configured interval.
-
----
-
-## Step 7: Save state
-
-Write updated state back to `~/.claude/dependabot-babysit-state.json` using the Write tool:
-
-```json
-{
-  "blocked_prs": ["<updated list>"],
-  "blocked_repos": ["<updated list>"],
-  "iteration": <current iteration number>,
-  "start_time": "<preserved from initial write>",
-  "scope": "<preserved from initial write>"
-}
-```
-
-Save **before** printing the reports so that if the skill is interrupted mid-report,
-state is not lost.
 
 ---
 
