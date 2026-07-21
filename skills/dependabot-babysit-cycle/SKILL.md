@@ -89,6 +89,31 @@ Read the knowledge base as described in the agent's **Knowledge Base** section. 
 
 ---
 
+## Step 1.9: Early exit check
+
+If the state file was already at iteration ≥ 1 when loaded in Step 1 (meaning this is a
+re-invocation, not the first cycle), and the previous cycle ended by printing the final
+report, check whether the stop condition is **already satisfied** before running discovery:
+
+- Read `all_open_prs` by calling `list_dependabot_prs` for each host (same scope as Step 2b).
+- If the result is empty AND there were no repos with failing main CI in the last iteration
+  (i.e., the previous Step 6 evaluated to "stop condition met"), print the silent exit message
+  and stop:
+
+```
+Babysit — nothing to do. All eligible PRs merged and all mains passing.
+Stop the /loop manually when ready.
+```
+
+If open PRs are found (GitHub has opened new PRs since the last cycle), continue to Step 2
+normally — do not exit early.
+
+**Note:** This check is a lightweight guard — it calls `list_dependabot_prs` but not
+`get_pr_details` or any CI status call. Its purpose is to avoid a full verification round
+when the work is already done.
+
+---
+
 ## Step 2: Verify — snapshot all PRs and main branches
 
 ### Step 2a: Discover hosts and acquire tokens
