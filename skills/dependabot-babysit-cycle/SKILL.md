@@ -19,17 +19,42 @@ is not present, stop and report an error.
 
 ## Step 0: Parse arguments
 
-Parse `ARGUMENTS` (text after the skill name):
+Parse `ARGUMENTS` (the text after the skill name) before doing anything else. Produce three variables used throughout the rest of the workflow:
 
-| Variable | Type            | Description |
-|----------|-----------------|-------------|
-| `scope`  | `string \| null` | Forwarded scope from `/dependabot-babysit`. `null` = all hosts. |
+| Variable | Type | Description |
+|----------|------|-------------|
+| `filter_hosts` | `[string] \| null` | hosts to process; `null` = all authenticated hosts |
+| `filter_repo` | `"org/repo" \| null` | exact repo to scope to |
+| `filter_pr` | `int \| null` | single PR number; requires `filter_repo` |
 
-The scope uses the same parsing rules as all other skills in this plugin:
-- Contains `.` at the host segment → treat as host filter
-- `<org>/<repo>` → filter_repo
-- `<org>` → filter_org
-- Otherwise → null
+Also derive:
+
+- `filter_org` — the part before `/` in `filter_repo`, or the standalone `<org>` argument, or `null`
+
+### Parsing rules (first match wins)
+
+Strip a leading `https://` prefix first (do not pass the protocol to any tool).
+
+| Input format                                              | `filter_hosts` | `filter_repo` | `filter_pr` |
+|-----------------------------------------------------------|----------------|---------------|-------------|
+| `<host>/<org>/<repo>/pull/<PR>` (after stripping `https://`) | `[host]`    | `org/repo`    | PR          |
+| `<host>/<org>/<repo>`                                     | `[host]`       | `org/repo`    | null        |
+| `<host>/<org>`                                            | `[host]`       | null          | null        |
+| `<host>` (contains `.`)                                   | `[host]`       | null          | null        |
+| `<org>/<repo>:<PR>`                                       | null           | `org/repo`    | PR          |
+| `<org>/<repo>#<PR>`                                       | null           | `org/repo`    | PR          |
+| `<org>/<repo>`                                            | null           | `org/repo`    | null        |
+| `<org>` (no `.`)                                          | null           | null          | null        |
+| *(empty)*                                                 | null           | null          | null        |
+
+**Host detection:** a path segment is a host if it contains `.`; otherwise it is an org.
+
+### Errors
+
+- `filter_hosts` contains a host not found in `gh auth status` output → stop:
+  `"Error: not logged in to <host>. Run 'gh auth login --hostname <host>'."`
+- `filter_pr` set but `filter_repo` is null → stop:
+  `"Error: PR number requires a repo (use <org>/<repo>:<PR>)."`
 
 ---
 
@@ -58,6 +83,12 @@ Keep in memory:
 
 ---
 
+## Step 1.5: Load knowledge base
+
+Read the knowledge base as described in the agent's **Knowledge Base** section. Keep loaded entries available for PR classification in Step 2c and correlation in Step 3a.
+
+---
+
 ## Step 2: Verify — snapshot all PRs and main branches
 
 ### Step 2a: Discover hosts and acquire tokens
@@ -66,8 +97,7 @@ Keep in memory:
 gh auth status --show-token
 ```
 
-Parse output to build `{host, token}` pairs. Apply `scope` filter if set (keep only the
-matching host if scope specifies a host).
+Parse output to build `{host, token}` pairs. If `filter_hosts` is non-null (set in Step 0), keep only pairs where the host appears in `filter_hosts`.
 
 ### Step 2b: Discover open PRs
 
@@ -84,7 +114,7 @@ else:
 
 ### Step 2c: Classify each PR
 
-For each PR not in `blocked_prs` (match format `"<repo>#<number>"`):
+For each PR not in `blocked_prs` (match format `"org/repo#123"`):
 
 ```
 get_pr_details(host, token, repo=pr.repo, pr_number=pr.number)
@@ -98,7 +128,7 @@ Apply the classification priority table from `/dependabot-verify` (7 states):
 | 1 | ⚠️ ACTION REQUIRED | `ci_status == "failing"` OR comment contains `"requires manual action ⚠️"` |
 | 2 | 🔄 NEEDS BRANCH UPDATE | `merge_state == "behind"` |
 | 3 | ⏳ WAITING FOR CI | `ci_status == "pending"` |
-| 4 | 👀 NEEDS REVIEW | No APPROVED review from current user |
+| 4 | 👀 NEEDS REVIEW | No `APPROVED` review from current user AND no comment contains `"Dependabot PR reviewed ✅"` or `"requires manual action ⚠️"` |
 | 5 | ✅ READY | Approved + automerge + CI passing + branch up to date |
 | 6 | 👀 NEEDS REVIEW | catch-all |
 
@@ -107,7 +137,7 @@ PRs in `blocked_prs` are excluded entirely from this classification.
 ### Step 2d: Collect main branch CI status
 
 For each unique `(host, repo)` across all open PRs, plus repos from
-`list_recently_merged_dependabot_prs(host, token, since=<7 days ago>)`:
+`list_recently_merged_dependabot_prs(host, token, since=<14 days ago>)`:
 
 ```
 get_branch_ci_status(host, token, repo, branch="main")
@@ -149,11 +179,12 @@ Proceed with /dependabot-fix? (yes / no)
 
 ### Step 3c: Execute or block
 
-- `tak` or `yes` → invoke the `/dependabot-fix` logic with `auto_confirm=true` for this repo
+- `tak`, `yes`, or empty reply → invoke the `/dependabot-fix` logic with `auto_confirm=true` for this repo
   (equivalent to `/dependabot-fix --yes <repo>`).
   - If fix succeeds → re-check `get_branch_ci_status` to confirm main is now passing.
   - If fix fails (diagnostic comment posted, or unexpected situation hit) → add `"org/repo"` to `blocked_repos`.
 - `nie` or `no` → add `"org/repo"` to `blocked_repos`.
+- Any other input → re-present the prompt from Step 3b and wait for a valid response.
 
 ### Step 3d: Build `unhealthy_repos` gate
 
