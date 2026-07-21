@@ -27,7 +27,7 @@ Parse `ARGUMENTS` (text after the skill name). Extract two optional values:
 
 Scan tokens in `ARGUMENTS` left to right:
 
-1. A token matching `^\d+[smhd]$` (digits followed by s/m/h/d) → `interval`
+1. A token matching `^\d+[smhd]$` (digits followed by s/m/h/d) → `interval` (first match only; subsequent matching tokens are treated as part of `scope`)
 2. All remaining tokens joined with a space → `scope` (or `null` if nothing remains)
 
 Examples:
@@ -60,7 +60,8 @@ Use the current wall-clock time for `start_time`.
 
 If the file already exists (a previous babysit session for the same scope), read it and
 **preserve** `blocked_prs`, `blocked_repos`, and `start_time`. Reset `iteration` to 0 only
-if `scope` has changed. This allows resuming an interrupted session.
+if `scope` has changed. This allows resuming an interrupted session. If `scope` has changed,
+also clear `blocked_prs` and `blocked_repos` — blocked state from a different scope is not applicable.
 
 ---
 
