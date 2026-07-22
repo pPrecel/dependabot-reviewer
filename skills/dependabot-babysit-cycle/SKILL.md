@@ -144,17 +144,18 @@ For each PR not in `blocked_prs` (match format `"org/repo#123"`):
 get_pr_details(host, token, repo=pr.repo, pr_number=pr.number)
 ```
 
-Apply the classification priority table from `/dependabot-verify` (7 states):
+Apply the classification priority table from `/dependabot-verify` (8 states):
 
 | Priority | Status | Condition |
 |----------|--------|-----------|
 | 0 | ⚠️ ACTION REQUIRED | KB proactive match |
 | 1 | ⚠️ ACTION REQUIRED | `ci_status == "failing"` OR comment contains `"requires manual action ⚠️"` |
 | 2 | 🔄 NEEDS BRANCH UPDATE | `merge_state == "behind"` |
-| 3 | ⏳ WAITING FOR CI | `ci_status == "pending"` |
-| 4 | 👀 NEEDS REVIEW | No `APPROVED` review from current user AND no comment contains `"Dependabot PR reviewed ✅"` or `"requires manual action ⚠️"` |
-| 5 | ✅ READY | Approved + automerge + CI passing + branch up to date |
-| 6 | 👀 NEEDS REVIEW | catch-all |
+| 3 | 🔐 WAITING FOR ENV APPROVAL | `ci_status == "waiting_for_env_approval"` |
+| 4 | ⏳ WAITING FOR CI | `ci_status == "pending"` |
+| 5 | 👀 NEEDS REVIEW | No `APPROVED` review from current user AND no comment contains `"Dependabot PR reviewed ✅"` or `"requires manual action ⚠️"` |
+| 6 | ✅ READY | Approved + automerge + CI passing + branch up to date |
+| 7 | 👀 NEEDS REVIEW | catch-all |
 
 PRs in `blocked_prs` are excluded entirely from this classification.
 
@@ -237,6 +238,7 @@ Route by current status:
 |--------|--------|
 | `👀 NEEDS REVIEW` | Execute full `/dependabot-review` Path B analysis for this PR. Use `prepare_merge` to approve and set automerge. |
 | `🔄 NEEDS BRANCH UPDATE` | Call `update_branch(host, token, repo, pr_number)`. If `needs_manual_rebase` → attempt conflict resolution as per `/dependabot-update` Step 3.5. |
+| `🔐 WAITING FOR ENV APPROVAL` | Call `prepare_merge(host, token, repo, pr_number, comment)` to approve pending environment deployments. |
 | `⏳ WAITING FOR CI` | No action — wait for GitHub. |
 | `✅ READY` | No action — GitHub automerge will handle it. |
 | `⚠️ ACTION REQUIRED` | Skip here — handled in Step 5. |
@@ -347,6 +349,7 @@ The `/loop` scheduler will invoke the next cycle after the configured interval.
 | org/repo | [#789](url) | ⚠️ ACTION REQUIRED | 🔧 fixed <commit_url> |
 | org/repo | [#101](url) | ⚠️ ACTION REQUIRED | ⏭️ blocked (user declined) |
 | org/repo | [#102](url) | ⏳ WAITING FOR CI | ⏳ waiting |
+| org/repo | [#104](url) | 🔐 WAITING FOR ENV APPROVAL | 🔐 envs approved (1) |
 | org/repo | [#103](url) | 🔒 skipped | repo main failing |
 
 ### Main branch health
@@ -362,6 +365,7 @@ Next iteration in <interval>.
 **Action values for PRs:**
 - `—` — no action taken (already merged, READY, or WAITING)
 - `⏳ waiting for GitHub automerge` — READY, automerge set, waiting for GitHub
+- `🔐 envs approved (<N>)` — N environment deployments approved; CI now running
 - `🔧 fixed <commit_url>` — fix committed successfully
 - `⏭️ blocked (user declined)` — user said no to fix prompt
 - `⏭️ blocked (fix failed)` — fix attempted but could not be completed

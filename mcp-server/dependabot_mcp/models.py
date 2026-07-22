@@ -37,7 +37,7 @@ class Comment(BaseModel):
 class PRDetails(BaseModel):
     reviews: list[Review]
     auto_merge_set: bool
-    ci_status: Literal["passing", "failing", "pending"]
+    ci_status: Literal["passing", "failing", "pending", "waiting_for_env_approval"]
     failing_checks: list[CheckResult]
     merge_state: str
     diff_classification: DiffClassification

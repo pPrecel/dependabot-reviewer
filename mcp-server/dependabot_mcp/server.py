@@ -135,6 +135,8 @@ async def get_pr_details(host: str, token: str, repo: str, pr_number: int) -> di
     ]
     if failing:
         ci_status = "failing"
+    elif any(c.get("status") == "waiting" for c in checks_raw):
+        ci_status = "waiting_for_env_approval"
     elif any(c.get("status") == "in_progress" or c.get("conclusion") is None for c in checks_raw):
         ci_status = "pending"
     else:

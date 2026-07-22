@@ -249,6 +249,43 @@ async def test_get_branch_ci_status_deduplicates_reruns():
 
 
 @respx.mock
+async def test_get_pr_details_waiting_for_env_approval():
+    """get_pr_details must return ci_status='waiting_for_env_approval' when any check is waiting."""
+    pr_payload = {
+        "number": 42,
+        "title": "chore(deps): bump foo",
+        "head": {"sha": "deadbeef"},
+        "auto_merge": None,
+        "mergeable_state": "blocked",
+        "body": "",
+    }
+    respx.get("https://api.github.com/repos/owner/repo/pulls/42").mock(
+        return_value=httpx.Response(200, json=pr_payload)
+    )
+    respx.get("https://api.github.com/repos/owner/repo/pulls/42/reviews").mock(
+        return_value=httpx.Response(200, json=[])
+    )
+    respx.get("https://api.github.com/repos/owner/repo/issues/42/comments").mock(
+        return_value=httpx.Response(200, json=[])
+    )
+    respx.get("https://api.github.com/repos/owner/repo/pulls/42",
+              headers__contains={"Accept": "application/vnd.github.v3.diff"}).mock(
+        return_value=httpx.Response(200, text="diff --git a/go.sum b/go.sum\n")
+    )
+    respx.get("https://api.github.com/repos/owner/repo/commits/deadbeef/check-runs").mock(
+        return_value=httpx.Response(200, json={
+            "check_runs": [
+                {"id": 1, "name": "build", "status": "completed", "conclusion": "success"},
+                {"id": 2, "name": "select-environment", "status": "waiting", "conclusion": None},
+            ]
+        })
+    )
+    result = await get_pr_details(host="github.com", token="tok", repo="owner/repo", pr_number=42)
+    assert result["ci_status"] == "waiting_for_env_approval"
+    assert result["failing_checks"] == []
+
+
+@respx.mock
 async def test_get_pr_details_deduplicates_reruns():
     """get_pr_details must also deduplicate stale failures from earlier check runs."""
     pr_payload = {
