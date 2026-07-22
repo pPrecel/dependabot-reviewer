@@ -10,6 +10,8 @@ A Claude Code plugin that automates Dependabot PR review. It provides:
 - **`/dependabot-verify` skill** (`skills/dependabot-verify/SKILL.md`) — read-only status check: scans PRs and reports their state without taking any write actions
 - **`/dependabot-fix` skill** (`skills/dependabot-fix/SKILL.md`) — fixes a single PR or repo with failing main-branch CI: analyses the problem, proposes a repair plan, and executes after user confirmation
 - **`/dependabot-update` skill** (`skills/dependabot-update/SKILL.md`) — bulk branch updater: updates branches behind their base and resolves dependency-file merge conflicts autonomously
+- **`/dependabot-babysit` skill** (`skills/dependabot-babysit/SKILL.md`) — entry-point loop: initialises state and launches `/loop /dependabot-babysit-cycle` at a configurable interval
+- **`/dependabot-babysit-cycle` skill** (`skills/dependabot-babysit-cycle/SKILL.md`) — one iteration of the babysit loop: verify → main health check → review/update → fix → stop-condition evaluation
 - **`dependabot-reviewer` agent** (`agents/dependabot-reviewer.md`) — shared domain knowledge used by all skills
 
 The plugin is declared in `.claude-plugin/plugin.json`.
@@ -49,29 +51,43 @@ Without the tag, `/plugin` will report the plugin is already up to date even tho
 - `dependabot-verify/SKILL.md` — tooling detection with read-only preference, classification priority table (7 states), summary table format with Detail column
 - `dependabot-fix/SKILL.md` — single-PR/repo analysis, repair plan proposal, conflict and CI fix execution, knowledge base recording
 - `dependabot-update/SKILL.md` — bulk branch update, dependency-file conflict resolution, summary table (UPDATED/CONFLICTS RESOLVED/NEEDS MANUAL REVIEW/NO ACTION/ERROR)
+- `dependabot-babysit/SKILL.md` — argument parsing, state initialisation, `/loop` invocation
+- `dependabot-babysit-cycle/SKILL.md` — single iteration: state load, verify, main health check, review/update, fix, stop-condition evaluation, reports
 
 **Rule**: if logic is used by only one skill, it belongs in that skill. If logic is used by multiple skills (or is general Dependabot/GitHub domain knowledge), it belongs in the agent.
 
 ### File paths
 
 ```
-agents/dependabot-reviewer.md      ← shared domain knowledge
-skills/dependabot-review/SKILL.md  ← review workflow
-skills/dependabot-verify/SKILL.md  ← verify (read-only) workflow
-skills/dependabot-fix/SKILL.md     ← fix single PR/repo workflow
-skills/dependabot-update/SKILL.md  ← bulk branch update workflow
-.claude-plugin/plugin.json         ← plugin declaration
+agents/dependabot-reviewer.md           ← shared domain knowledge
+skills/dependabot-review/SKILL.md       ← review workflow
+skills/dependabot-verify/SKILL.md       ← verify (read-only) workflow
+skills/dependabot-fix/SKILL.md          ← fix single PR/repo workflow
+skills/dependabot-update/SKILL.md       ← bulk branch update workflow
+skills/dependabot-babysit/SKILL.md      ← babysit entry-point (loop launcher)
+skills/dependabot-babysit-cycle/SKILL.md ← one babysit iteration
+.claude-plugin/plugin.json              ← plugin declaration
 ```
 
 ### MCP server (`mcp-server/`)
 
-The plugin ships a Python MCP server that owns all GitHub I/O for the `dependabot-review` skill. It exposes 5 tools:
+The plugin ships a Python MCP server that owns all GitHub I/O. It exposes:
 
 - `list_dependabot_prs(host, token)` — discover PRs via `@me` search qualifiers
 - `get_pr_details(host, token, repo, pr_number)` — fetch reviews, CI, diff, comments in parallel
 - `get_changelog(host, token, library_repo, new_version)` — fetch release notes
 - `prepare_merge(host, token, repo, pr_number, comment)` — orchestrate rebase → env approvals → automerge → approve
 - `post_action_required_comment(host, token, repo, pr_number, reason, ...)` — post structured comment
+- `update_branch(host, token, repo, pr_number)` — update PR branch against base
+- `get_branch_ci_status(host, token, repo, branch)` — get CI status of a branch
+- `get_check_logs(host, token, repo, check_run_id)` — fetch full logs for a failing CI check
+- `list_recently_merged_dependabot_prs(host, token, since)` — list recently merged Dependabot PRs
+- `commit_files(host, token, repo, branch, files, message, head_sha)` — commit file changes atomically
+- `create_pull_request(host, token, repo, title, head, base, body)` — open a new PR
+- `get_branch_head_sha(host, token, repo, branch)` — get HEAD SHA of a branch
+- `get_file_contents(host, token, repo, path, ref)` — fetch a file's content and blob SHA
+- `get_pr_head_sha(host, token, repo, pr_number)` — get HEAD SHA of a PR branch
+- `get_raw_diff(host, token, repo, pr_number)` — fetch raw unified diff of a PR
 
 The server is declared in `.mcp.json`. Token acquisition (`gh auth token`) stays in the skill — the server is stateless and receives `host` and `token` on every call.
 
@@ -100,6 +116,7 @@ docs/dependabot-review.md  ← /dependabot-review decision tree and status legen
 docs/dependabot-verify.md  ← /dependabot-verify decision tree and status legend
 docs/dependabot-fix.md     ← /dependabot-fix decision tree and execution flow
 docs/dependabot-update.md  ← /dependabot-update decision tree and status legend
+docs/dependabot-babysit.md ← /dependabot-babysit decision tree, stop condition, session state, status legend
 docs/knowledge-base.md     ← shared KB: format, matching, recording rules
 ```
 
