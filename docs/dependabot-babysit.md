@@ -12,7 +12,7 @@ Stops automatically when all eligible PRs are merged and all main branches are p
 
 | Argument   | Default | Description |
 |------------|---------|-------------|
-| `interval` | `15m`   | Loop interval (e.g. `15m`, `30m`, `1h`) |
+| `interval` | `5m`    | Loop interval (e.g. `5m`, `30m`, `1h`) |
 | `scope`    | all hosts | Same format as other skills: host, org, org/repo |
 
 Examples:

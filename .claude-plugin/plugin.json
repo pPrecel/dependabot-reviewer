@@ -1,5 +1,5 @@
 {
   "name": "dependabot-reviewer",
   "description": "Review, verify, fix, and update Dependabot and ospo-renovate PRs across all GitHub hosts. /dependabot-review approves safe updates and sets automerge. /dependabot-verify reports PR status read-only. /dependabot-fix fixes PRs with merge conflicts or failing CI, with optional --yes flag for fully autonomous execution. /dependabot-update updates all open PR branches and resolves dependency-file merge conflicts autonomously. /dependabot-babysit loops until all PRs are merged and main branches are passing, asking for confirmation before each fix.",
-  "version": "2.12.0"
+  "version": "2.13.0"
 }

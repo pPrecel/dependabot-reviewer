@@ -23,7 +23,7 @@ Parse `ARGUMENTS` (text after the skill name). Extract two optional values:
 
 | Variable   | Type            | Description |
 |------------|-----------------|-------------|
-| `interval` | `string \| null` | Loop interval passed to `/loop` (e.g. `15m`, `30m`, `1h`). Default: `15m`. |
+| `interval` | `string \| null` | Loop interval passed to `/loop` (e.g. `5m`, `30m`, `1h`). Default: `5m`. |
 | `scope`    | `string \| null` | Scope forwarded to each cycle (host, org, org/repo, etc.). `null` = all hosts. |
 
 ### Parsing rules
@@ -37,10 +37,10 @@ Examples:
 
 | ARGUMENTS              | `interval` | `scope`       |
 |------------------------|------------|---------------|
-| *(empty)*              | `15m`      | null          |
+| *(empty)*              | `5m`       | null          |
 | `30m`                  | `30m`      | null          |
 | `20m myorg`            | `20m`      | `myorg`       |
-| `github.com/myorg`     | `15m`      | `github.com/myorg` |
+| `github.com/myorg`     | `5m`       | `github.com/myorg` |
 | `1h myorg/myrepo`      | `1h`       | `myorg/myrepo` |
 
 ---
@@ -77,12 +77,12 @@ Invoke the `/loop` skill:
 ```
 
 Where:
-- `<interval>` is the value from Step 0 (default `15m`)
+- `<interval>` is the value from Step 0 (default `5m`)
 - `<scope>` is the scope from Step 0, appended only if non-null
 
 Examples:
 ```
-/loop 15m /dependabot-babysit-cycle
+/loop 5m /dependabot-babysit-cycle
 /loop 30m /dependabot-babysit-cycle myorg
 /loop 1h /dependabot-babysit-cycle github.com/myorg
 ```
