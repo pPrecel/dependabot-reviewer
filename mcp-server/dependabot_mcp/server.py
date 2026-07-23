@@ -537,7 +537,7 @@ async def list_recently_merged_dependabot_prs(host: str, token: str, since: str)
     )
     results = await asyncio.gather(
         *[
-            client.search_prs(f"is:pr is:merged author:{a} merged:>={since} reviewed-by:@me")
+            client.search_prs(f"is:pr is:merged author:{a} merged:>={since}")
             for a in bot_authors
         ],
         return_exceptions=True,

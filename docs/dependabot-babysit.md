@@ -29,6 +29,8 @@ Examples:
 load state (~/.claude/dependabot-babysit-state.json)
 │
 ├── verify: list all open PRs + main branch CI status
+│   └── re-check blocked_prs: call get_pr_details for each blocked PR
+│       └── status no longer ACTION REQUIRED → remove from blocked_prs, process normally
 │
 ├── Step 3: main branch health (PRIORITY — runs before review)
 │   └── for each repo with failing main (not in blocked_repos):
@@ -75,7 +77,7 @@ State is persisted between loop cycles in `~/.claude/dependabot-babysit-state.js
 
 | Field | Description |
 |-------|-------------|
-| `blocked_prs` | PRs where fix failed or user declined. Never retried in this session. |
+| `blocked_prs` | PRs where fix failed or user declined. Re-checked each cycle — automatically unblocked if the problem is resolved. |
 | `blocked_repos` | Repos where main branch fix failed or user declined. Skipped in all subsequent cycles. |
 | `iteration` | Current cycle count. |
 | `start_time` | ISO timestamp of first invocation (used in elapsed-time calculation). |

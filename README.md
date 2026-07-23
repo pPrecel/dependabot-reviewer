@@ -56,6 +56,16 @@ Bulk branch updater: updates all branches that are behind their base and resolve
 
 See [docs/dependabot-update.md](docs/dependabot-update.md) for the status legend and conflict resolution details.
 
+### Babysit until done (read-write)
+
+```
+/dependabot-babysit [interval] [scope]
+```
+
+Runs a continuous loop — verify → main branch health check → review/update → fix — until all eligible PRs are merged and all main branches are passing. Asks for confirmation before each fix attempt. Stops automatically when done. The loop interval defaults to `5m`; pass a scope argument to limit work to a specific host, org, or repo.
+
+See [docs/dependabot-babysit.md](docs/dependabot-babysit.md) for the decision tree, stop condition, and session state description.
+
 ## How it works
 
 The plugin discovers authenticated GitHub hosts via `gh auth status`, then queries each host for open PRs authored by `app/dependabot` or `app/ospo-renovate` where you are a requested reviewer — covering both github.com and GitHub Enterprise Server instances. All GitHub I/O is handled by the bundled `dependabot-reviewer` MCP server, which exposes tools such as `list_dependabot_prs`, `get_pr_details`, `prepare_merge`, and `post_action_required_comment`. The skills orchestrate these tools autonomously and report results in a summary table.

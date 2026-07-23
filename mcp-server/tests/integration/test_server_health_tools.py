@@ -171,6 +171,24 @@ async def test_list_recently_merged_dependabot_prs_ghes_uses_plain_author():
 
 
 @respx.mock
+async def test_list_recently_merged_dependabot_prs_does_not_filter_by_reviewer():
+    """Query must NOT include reviewed-by:@me — all Dependabot PRs merged recently should be returned,
+    not only those reviewed by the current user."""
+    captured_queries = []
+
+    def capture(request):
+        captured_queries.append(request.url.params.get("q", ""))
+        return httpx.Response(200, json={"items": []})
+
+    respx.get("https://api.github.com/search/issues").mock(side_effect=capture)
+
+    await list_recently_merged_dependabot_prs(
+        host="github.com", token="tok", since="2026-06-26"
+    )
+    assert all("reviewed-by:" not in q for q in captured_queries)
+
+
+@respx.mock
 async def test_list_dependabot_prs_with_org_filter():
     """org= adds org:<org> qualifier to all search queries."""
     captured_queries = []
