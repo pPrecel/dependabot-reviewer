@@ -138,7 +138,24 @@ else:
 
 ### Step 2c: Classify each PR
 
-For each PR not in `blocked_prs` (match format `"org/repo#123"`):
+#### Step 2c-i: Re-check blocked PRs
+
+Before classifying open PRs, check whether any PR in `blocked_prs` has been fixed
+(e.g. someone manually resolved a merge conflict or repaired a failing CI check).
+
+For each PR key in `blocked_prs` (format `"org/repo#123"`):
+
+1. Parse `repo` and `pr_number` from the key.
+2. Call `get_pr_details(host, token, repo=repo, pr_number=pr_number)`.
+3. Apply the classification priority table (same table as below).
+4. If the resulting status is **anything other than `⚠️ ACTION REQUIRED`**:
+   - Remove the key from `blocked_prs`.
+   - Add the PR to the pool of PRs to classify in Step 2c-ii.
+5. If the status is still `⚠️ ACTION REQUIRED` — leave it in `blocked_prs`, take no action.
+
+#### Step 2c-ii: Classify open PRs
+
+For each PR from Step 2b **not** in `blocked_prs`, plus any PRs unblocked in Step 2c-i:
 
 ```
 get_pr_details(host, token, repo=pr.repo, pr_number=pr.number)
@@ -157,7 +174,7 @@ Apply the classification priority table from `/dependabot-verify` (8 states):
 | 6 | ✅ READY | Approved + automerge + CI passing + branch up to date |
 | 7 | 👀 NEEDS REVIEW | catch-all |
 
-PRs in `blocked_prs` are excluded entirely from this classification.
+PRs remaining in `blocked_prs` are excluded entirely from this classification.
 
 ### Step 2d: Collect main branch CI status
 
