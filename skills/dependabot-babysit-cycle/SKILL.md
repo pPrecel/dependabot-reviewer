@@ -146,16 +146,21 @@ Before classifying open PRs, check whether any PR in `blocked_prs` has been fixe
 For each PR key in `blocked_prs` (format `"org/repo#123"`):
 
 1. Parse `repo` and `pr_number` from the key.
-2. Call `get_pr_details(host, token, repo=repo, pr_number=pr_number)`.
-3. Apply the classification priority table (same table as below).
-4. If the resulting status is **anything other than `⚠️ ACTION REQUIRED`**:
+2. Determine `host` and `token` by matching `repo` against the repos discovered in Step 2b
+   across all `{host, token}` pairs from Step 2a. Use the host where `repo` was found.
+3. Call `get_pr_details(host, token, repo=repo, pr_number=pr_number)`.
+4. Apply the classification priority table (same table as in Step 2c-ii).
+5. If the resulting status is **anything other than `⚠️ ACTION REQUIRED`**:
    - Remove the key from `blocked_prs`.
-   - Add the PR to the pool of PRs to classify in Step 2c-ii.
-5. If the status is still `⚠️ ACTION REQUIRED` — leave it in `blocked_prs`, take no action.
+   - Record the already-fetched `PRDetails` for this PR — it will be reused in Step 2c-ii.
+6. If the status is still `⚠️ ACTION REQUIRED` — leave it in `blocked_prs`, take no action.
 
 #### Step 2c-ii: Classify open PRs
 
 For each PR from Step 2b **not** in `blocked_prs`, plus any PRs unblocked in Step 2c-i:
+
+- If the PR was unblocked in Step 2c-i, reuse the `PRDetails` already fetched there — do **not** call `get_pr_details` again.
+- Otherwise, call:
 
 ```
 get_pr_details(host, token, repo=pr.repo, pr_number=pr.number)
